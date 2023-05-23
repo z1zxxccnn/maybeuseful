@@ -9,6 +9,7 @@ import subprocess
 import threading
 import queue
 import os
+import datetime
 
 
 def do_get(child_conn, url):
@@ -92,11 +93,16 @@ def parse_svrs(data):
     return svr_lst
 
 
+g_default_socks_port = 10808
+g_default_http_port = 10809
+
+
 class ConfigObj:
 
     def __init__(self):
-        self.socks_port = 10808
-        self.http_port = 10809
+        self.socks_port = g_default_socks_port
+        self.http_port = g_default_http_port
+        self.global_proxy = False
 
     def gen_json(self, svr):
         d = {}
@@ -156,7 +162,10 @@ class ConfigObj:
         rule4 = {'type': 'field', 'outboundTag': 'direct', 'enabled': True,
                  'ip': ['geoip:private', 'geoip:cn']}
         rule5 = {'type': 'field', 'port': '0-65535', 'outboundTag': 'proxy', 'enabled': True}
-        routing['rules'] = [rule0, rule1, rule2, rule3, rule4, rule5]
+        if self.global_proxy:
+            routing['rules'] = [rule0, rule5]
+        else:
+            routing['rules'] = [rule0, rule1, rule2, rule3, rule4, rule5]
 
         d['routing'] = routing
 
@@ -226,6 +235,53 @@ class UIMain:
 
         self.editor_path = tk.Entry(self.frame1)
         self.editor_path.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+
+        self.check_global_var = tk.IntVar()
+        self.check_global = tk.Checkbutton(self.frame1, text='Global Proxy', variable=self.check_global_var,
+                                           onvalue=1, offvalue=0, command=self.click_check_global)
+        self.check_global.pack(side='right', padx=5, pady=2)
+
+        self.editor_http_port = tk.Entry(self.frame1, width=8)
+        self.editor_http_port.pack(side='right', padx=(0, 5), pady=2)
+
+        self.label_http_port = tk.Label(self.frame1, text='http-port:')
+        self.label_http_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.editor_socks_port = tk.Entry(self.frame1, width=8)
+        self.editor_socks_port.pack(side='right', padx=(0, 5), pady=2)
+
+        self.label_socks_port = tk.Label(self.frame1, text='socks-port:')
+        self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.frame_out = tk.Frame(self.frame)
+        self.frame_out.pack(fill='x', side='top', padx=5, pady=5)
+
+        self.label_stdout = tk.Label(self.frame_out, text='std out:')
+        self.label_stdout.pack(side='top', anchor='nw')
+
+        self.text_stdout_vs = tk.Scrollbar(self.frame_out, orient='vertical')
+        self.text_stdout_vs.pack(fill='y', side='right')
+
+        self.text_stdout = tk.Text(self.frame_out, height=10,
+                                   yscrollcommand=self.text_stdout_vs.set)
+
+        self.text_stdout_vs.config(command=self.text_stdout.yview)
+        self.text_stdout.pack(fill='x', side='top')
+
+        self.frame_err = tk.Frame(self.frame)
+        self.frame_err.pack(fill='x', side='top', padx=5, pady=5)
+
+        self.label_stderr = tk.Label(self.frame_err, text='std err:')
+        self.label_stderr.pack(side='top', anchor='nw')
+
+        self.text_stderr_vs = tk.Scrollbar(self.frame_err, orient='vertical')
+        self.text_stderr_vs.pack(fill='y', side='right')
+
+        self.text_stderr = tk.Text(self.frame_err, height=10,
+                                   yscrollcommand=self.text_stderr_vs.set)
+
+        self.text_stderr_vs.config(command=self.text_stderr.yview)
+        self.text_stderr.pack(fill='x', side='top')
 
         self.table_popup = tk.Menu(self.root, tearoff=0)
         self.table_popup.add_command(label='Use This', command=self.table_popup_select)
@@ -307,6 +363,9 @@ class UIMain:
                               text=(check if cur_iid == self.cur_svr else uncheck), values=val)
             cur_iid += 1
 
+    def click_check_global(self):
+        print(f'click check global: {self.check_global_var.get()}')
+
     def do_table_popup(self, event):
         self.cur_popup = int(self.table.identify_row(event.y))
         self.table_popup.post(event.x_root, event.y_root)
@@ -335,13 +394,35 @@ class UIMain:
         if self.out_q is None or self.err_q is None:
             return
 
+        a = datetime.datetime.now()
         while not self.out_q.empty():
             line = self.out_q.get()
-            print(f'stdout: {line}')
+            self.text_stdout.insert(tk.END, line)
+            self.text_stdout.yview_pickplace('end')
+            b = datetime.datetime.now() - a
+            if b.microseconds > 200:
+                break
 
+        a = datetime.datetime.now()
         while not self.err_q.empty():
             line = self.err_q.get()
-            print(f'stderr: {line}')
+            self.text_stderr.insert(tk.END, line)
+            self.text_stderr.yview_pickplace('end')
+            b = datetime.datetime.now() - a
+            if b.microseconds > 200:
+                break
+
+        max_line = 2000
+
+        total = int(self.text_stdout.index(tk.END).split('.')[0])
+        if total > max_line:
+            self.text_stdout.delete('1.0', f'{total - max_line + 1}.0')
+            self.text_stdout.yview_pickplace('end')
+
+        total = int(self.text_stderr.index(tk.END).split('.')[0])
+        if total > max_line:
+            self.text_stderr.delete('1.0', f'{total - max_line + 1}.0')
+            self.text_stderr.yview_pickplace('end')
 
         self.root.after(1000, self.subproc_data)
 
@@ -365,6 +446,24 @@ class UIMain:
         if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
             print('server index incorrect')
             return
+
+        socks_port = self.editor_socks_port.get()
+        if socks_port.isdigit():
+            self.config_obj.socks_port = int(socks_port)
+        else:
+            self.config_obj.socks_port = g_default_socks_port
+
+        http_port = self.editor_http_port.get()
+        if http_port.isdigit():
+            self.config_obj.http_port = int(http_port)
+        else:
+            self.config_obj.http_port = g_default_http_port
+
+        self.config_obj.global_proxy = (self.check_global_var.get() == 1)
+
+        print(f'socks_port: {self.config_obj.socks_port}, '
+              f'http_port: {self.config_obj.http_port}, '
+              f'global_proxy: {self.config_obj.global_proxy}')
 
         config_path = os.path.join(path, 'config.json')
         cur_json = self.config_obj.gen_json(self.svr_lst[self.cur_svr])
