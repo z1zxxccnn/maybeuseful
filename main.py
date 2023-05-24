@@ -12,38 +12,20 @@ import os
 import datetime
 
 
-def do_get(child_conn, url):
-    response = urllib.request.urlopen(url)
-    content = response.read()
-    chunk_size = 1024 * 64
-    for i in range(0, len(content), chunk_size):
-        child_conn.send_bytes(content[i:i + chunk_size])
-    child_conn.close()
+class ChildProcHttpGet(threading.Thread):
 
-
-class ChildProcHttpGet:
     def __init__(self, url):
+        threading.Thread.__init__(self)
+        self.url = url
         self.ret = b''
-        self.eof = False
-        self.parent_conn, child_conn = multiprocessing.Pipe()
-        self.proc = multiprocessing.Process(target=do_get, args=(child_conn, url))
-        self.proc.start()
-        child_conn.close()
 
-    def finish(self):
-        if self.eof:
-            return True
+    def run(self):
+        print('do get thread start')
 
-        try:
-            while self.parent_conn.poll():
-                try:
-                    self.ret += self.parent_conn.recv_bytes()
-                except EOFError:
-                    self.eof = True
-        except BrokenPipeError:
-            self.eof = True
+        response = urllib.request.urlopen(self.url)
+        self.ret = response.read()
 
-        return self.eof
+        print('do get thread stop')
 
 
 def parse_svrs(data):
@@ -181,13 +163,13 @@ class SubProcReader(threading.Thread):
         self.q = q
 
     def run(self):
-        print('thread start')
+        print('reader thread start')
 
         while not self.exit:
             line = self.fd.readline()
             self.q.put(line.decode('UTF-8'))
 
-        print('thread stop')
+        print('reader thread stop')
 
 
 class UIMain:
@@ -311,7 +293,8 @@ class UIMain:
         self.table.heading('SECURITY', text='SECURITY', anchor=tk.CENTER)
         self.table.heading('SERVERNAME', text='SERVERNAME', anchor=tk.CENTER)
 
-        self.table.bind('<Button-3>', self.do_table_popup)
+        self.table.bind('<Button-2>', self.do_table_popup) # for mac
+        self.table.bind('<Button-3>', self.do_table_popup) # for win
 
     def root_close(self):
         print('root close')
@@ -330,10 +313,11 @@ class UIMain:
 
         print(f'Start update subscription: {url}')
         self.http_get = ChildProcHttpGet(url)
+        self.http_get.start()
         self.root.after(100, func=self.check_update_subscription)
 
     def check_update_subscription(self):
-        if self.http_get and not self.http_get.finish():
+        if self.http_get and self.http_get.is_alive():
             self.root.after(100, func=self.check_update_subscription)
             print('Wait...')
             return
