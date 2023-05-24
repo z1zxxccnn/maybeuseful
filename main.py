@@ -22,8 +22,11 @@ class ChildProcHttpGet(threading.Thread):
     def run(self):
         print('do get thread start')
 
-        response = urllib.request.urlopen(self.url)
-        self.ret = response.read()
+        try:
+            response = urllib.request.urlopen(self.url)
+            self.ret = response.read()
+        except Exception as e:
+            print(e)
 
         print('do get thread stop')
 
@@ -123,7 +126,7 @@ class ConfigObj:
             outbound0['mux'] = {'enabled': False, 'concurrency': -1}
             if 'security' in svr and 'servername' in svr:
                 outbound0['streamSettings']['security'] = svr['security']
-                outbound0['streamSettings']['tlsSettings'] =\
+                outbound0['streamSettings']['tlsSettings'] = \
                     {'allowInsecure': True, 'serverName': svr['servername'], 'fingerprint': ''}
         else:
             return None
@@ -293,8 +296,8 @@ class UIMain:
         self.table.heading('SECURITY', text='SECURITY', anchor=tk.CENTER)
         self.table.heading('SERVERNAME', text='SERVERNAME', anchor=tk.CENTER)
 
-        self.table.bind('<Button-2>', self.do_table_popup) # for mac
-        self.table.bind('<Button-3>', self.do_table_popup) # for win
+        self.table.bind('<Button-2>', self.do_table_popup)  # for mac
+        self.table.bind('<Button-3>', self.do_table_popup)  # for win
 
     def root_close(self):
         print('root close')
@@ -351,8 +354,10 @@ class UIMain:
         print(f'click check global: {self.check_global_var.get()}')
 
     def do_table_popup(self, event):
-        self.cur_popup = int(self.table.identify_row(event.y))
-        self.table_popup.post(event.x_root, event.y_root)
+        iid = self.table.identify_row(event.y)
+        if len(iid) > 0:
+            self.cur_popup = int(iid)
+            self.table_popup.post(event.x_root, event.y_root)
 
     def table_popup_select(self):
         if self.cur_popup < 0 or self.cur_popup >= len(self.svr_lst):
