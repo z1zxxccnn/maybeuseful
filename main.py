@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
-import multiprocessing
 import urllib.request
 import base64
 import json
@@ -168,9 +167,12 @@ class SubProcReader(threading.Thread):
     def run(self):
         print('reader thread start')
 
-        while not self.exit:
-            line = self.fd.readline()
-            self.q.put(line.decode('UTF-8'))
+        try:
+            while not self.exit:
+                line = self.fd.readline()
+                self.q.put(line.decode('UTF-8'))
+        except Exception as e:
+            print(e)
 
         print('reader thread stop')
 
@@ -228,12 +230,14 @@ class UIMain:
 
         self.editor_http_port = tk.Entry(self.frame1, width=8)
         self.editor_http_port.pack(side='right', padx=(0, 5), pady=2)
+        self.editor_http_port.insert(0, str(g_default_http_port))
 
         self.label_http_port = tk.Label(self.frame1, text='http-port:')
         self.label_http_port.pack(side='right', padx=(5, 0), pady=2)
 
         self.editor_socks_port = tk.Entry(self.frame1, width=8)
         self.editor_socks_port.pack(side='right', padx=(0, 5), pady=2)
+        self.editor_socks_port.insert(0, str(g_default_socks_port))
 
         self.label_socks_port = tk.Label(self.frame1, text='socks-port:')
         self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
@@ -367,6 +371,10 @@ class UIMain:
         self.update_svr_lst_to_ui()
         self.start_v2ray()
 
+        if not self.process:
+            self.cur_svr = -1
+            self.update_svr_lst_to_ui()
+
     def table_popup_unselect(self):
         if self.cur_popup < 0 or self.cur_popup >= len(self.svr_lst):
             return
@@ -429,34 +437,36 @@ class UIMain:
             messagebox.showinfo('start v2ray', 'path is empty')
             return
 
-        exe_path = os.path.join(path, 'wv2ray.exe')
-        if not os.path.exists(exe_path):
-            exe_path = os.path.join(path, 'v2ray')
-        if not os.path.exists(exe_path):
-            print('v2ray can not found')
-            return
-
-        if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
-            print('server index incorrect')
-            return
-
         socks_port = self.editor_socks_port.get()
         if socks_port.isdigit():
             self.config_obj.socks_port = int(socks_port)
         else:
-            self.config_obj.socks_port = g_default_socks_port
+            messagebox.showinfo('start v2ray', 'socks port error')
+            return
 
         http_port = self.editor_http_port.get()
         if http_port.isdigit():
             self.config_obj.http_port = int(http_port)
         else:
-            self.config_obj.http_port = g_default_http_port
+            messagebox.showinfo('start v2ray', 'http port error')
+            return
 
         self.config_obj.global_proxy = (self.check_global_var.get() == 1)
 
         print(f'socks_port: {self.config_obj.socks_port}, '
               f'http_port: {self.config_obj.http_port}, '
               f'global_proxy: {self.config_obj.global_proxy}')
+
+        exe_path = os.path.join(path, 'wv2ray.exe')
+        if not os.path.exists(exe_path):
+            exe_path = os.path.join(path, 'v2ray')
+        if not os.path.exists(exe_path):
+            messagebox.showinfo('start v2ray', 'v2ray can not found')
+            return
+
+        if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
+            messagebox.showinfo('start v2ray', 'server index incorrect')
+            return
 
         config_path = os.path.join(path, 'config.json')
         cur_json = self.config_obj.gen_json(self.svr_lst[self.cur_svr])
@@ -480,18 +490,19 @@ class UIMain:
         print('stop v2ray')
 
         if self.process:
+            self.out_t.exit = True
+            self.err_t.exit = True
+
             self.process.kill()
             self.process = None
             self.out_q = None
             self.err_q = None
 
             print('wait std out queue exit')
-            self.out_t.exit = True
             self.out_t.join()
             self.out_t = None
 
             print('wait std err queue exit')
-            self.err_t.exit = True
             self.err_t.join()
             self.err_t = None
 
