@@ -398,7 +398,8 @@ class UIMain:
         while not self.out_q.empty():
             line = self.out_q.get()
             self.text_stdout.insert(tk.END, line)
-            self.text_stdout.yview_pickplace('end')
+            if self.text_stdout_vs.get()[1] == 1.0:
+                self.text_stdout.yview_pickplace('end')
             b = datetime.datetime.now() - a
             if b.microseconds > 200:
                 break
@@ -407,7 +408,8 @@ class UIMain:
         while not self.err_q.empty():
             line = self.err_q.get()
             self.text_stderr.insert(tk.END, line)
-            self.text_stderr.yview_pickplace('end')
+            if self.text_stderr_vs.get()[1] == 1.0:
+                self.text_stderr.yview_pickplace('end')
             b = datetime.datetime.now() - a
             if b.microseconds > 200:
                 break
@@ -417,12 +419,14 @@ class UIMain:
         total = int(self.text_stdout.index(tk.END).split('.')[0])
         if total > max_line:
             self.text_stdout.delete('1.0', f'{total - max_line + 1}.0')
-            self.text_stdout.yview_pickplace('end')
+            if self.text_stdout_vs.get()[1] == 1.0:
+                self.text_stdout.yview_pickplace('end')
 
         total = int(self.text_stderr.index(tk.END).split('.')[0])
         if total > max_line:
             self.text_stderr.delete('1.0', f'{total - max_line + 1}.0')
-            self.text_stderr.yview_pickplace('end')
+            if self.text_stderr_vs.get()[1] == 1.0:
+                self.text_stderr.yview_pickplace('end')
 
         self.root.after(1000, self.subproc_data)
 
