@@ -192,6 +192,17 @@ class UIMain:
         self.out_t = None
         self.err_t = None
 
+        user_url = ''
+        user_path = ''
+        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
+        if os.path.exists(user_file):
+            f_user = open(user_file, 'rb')
+            data = f_user.read().decode('UTF-8')
+            f_user.close()
+            data = json.loads(data)
+            user_url = data.get('user_url', '')
+            user_path = data.get('user_path', '')
+
         self.root = tk.Tk()
         self.root.title('hello python')
         self.root.protocol('WM_DELETE_WINDOW', self.root_close)
@@ -210,6 +221,8 @@ class UIMain:
 
         self.editor_url = tk.Entry(self.frame0)
         self.editor_url.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_url) > 0:
+            self.editor_url.insert(0, user_url)
 
         self.btn_update = tk.Button(self.frame0, text='Update Subscription', command=self.click_update_subscription)
         self.btn_update.pack(side='right', padx=5, pady=2)
@@ -222,6 +235,8 @@ class UIMain:
 
         self.editor_path = tk.Entry(self.frame1)
         self.editor_path.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_path) > 0:
+            self.editor_path.insert(0, user_path)
 
         self.check_global_var = tk.IntVar()
         self.check_global = tk.Checkbutton(self.frame1, text='Global Proxy', variable=self.check_global_var,
@@ -485,6 +500,13 @@ class UIMain:
         self.err_t.start()
 
         self.subproc_data()
+
+        data = {'user_url': self.editor_url.get(), 'user_path': self.editor_path.get()}
+        data = json.dumps(data, indent=2)
+        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
+        f_user = open(user_file, 'wb')
+        f_user.write(data.encode('UTF-8'))
+        f_user.close()
 
     def stop_v2ray(self):
         print('stop v2ray')
