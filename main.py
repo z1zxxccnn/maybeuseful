@@ -19,15 +19,14 @@ class ChildProcHttpGet(threading.Thread):
         self.ret = b''
 
     def run(self):
-        print('do get thread start')
-
         try:
-            response = urllib.request.urlopen(self.url)
+            print(f'system proxy: {urllib.request.getproxies()}')
+            req = urllib.request.Request(self.url)
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            response = opener.open(req)
             self.ret = response.read()
         except Exception as e:
             print(e)
-
-        print('do get thread stop')
 
 
 def parse_svrs(data):
@@ -160,21 +159,18 @@ class SubProcReader(threading.Thread):
 
     def __init__(self, fd, q):
         threading.Thread.__init__(self)
-        self.exit = False
         self.fd = fd
         self.q = q
 
     def run(self):
-        print('reader thread start')
-
         try:
-            while not self.exit:
+            while 1:
                 line = self.fd.readline()
+                if len(line) <= 0:
+                    break
                 self.q.put(line.decode('UTF-8'))
         except Exception as e:
             print(e)
-
-        print('reader thread stop')
 
 
 class UIMain:
@@ -236,7 +232,8 @@ class UIMain:
         if len(user_url) > 0:
             self.editor_url.insert(0, user_url)
 
-        self.btn_update = tk.Button(self.frame0, text='Update Subscription', command=self.click_update_subscription)
+        self.btn_update = tk.Button(self.frame0, text='Update Subscription',
+                                    command=self.click_update_subscription)
         self.btn_update.pack(side='right', padx=5, pady=2)
 
         self.frame1 = tk.Frame(self.frame)
@@ -363,6 +360,12 @@ class UIMain:
             messagebox.showinfo('update subscription', 'url is empty')
             return
 
+        self.stop_v2ray()
+        self.svr_lst = []
+        self.cur_svr = -1
+        self.cur_popup = 0
+        self.update_svr_lst_to_ui()
+
         print(f'Start update subscription: {url}')
         self.http_get = ChildProcHttpGet(url)
         self.http_get.start()
@@ -419,12 +422,12 @@ class UIMain:
             return
 
         self.cur_svr = self.cur_popup
-        self.update_svr_lst_to_ui()
         self.start_v2ray()
 
         if not self.process:
             self.cur_svr = -1
-            self.update_svr_lst_to_ui()
+
+        self.update_svr_lst_to_ui()
 
     def table_popup_unselect(self):
         if self.cur_popup < 0 or self.cur_popup >= len(self.svr_lst):
@@ -432,8 +435,9 @@ class UIMain:
 
         if self.cur_svr == self.cur_popup:
             self.cur_svr = -1
-            self.update_svr_lst_to_ui()
             self.stop_v2ray()
+
+        self.update_svr_lst_to_ui()
 
     def table_popup_speed(self):
         pass
@@ -548,9 +552,6 @@ class UIMain:
         print('stop v2ray')
 
         if self.process:
-            self.out_t.exit = True
-            self.err_t.exit = True
-
             self.process.kill()
             self.process = None
             self.out_q = None
@@ -563,6 +564,8 @@ class UIMain:
             print('wait std err queue exit')
             self.err_t.join()
             self.err_t = None
+
+            print('stop v2ray finish')
 
 
 if __name__ == '__main__':
