@@ -210,7 +210,19 @@ class UIMain:
         self.frame = tk.Frame(self.root)
         self.frame.pack(fill='both')
 
-        self.table = ttk.Treeview(self.frame)
+        self.frame_table = tk.Frame(self.frame)
+        self.frame_table.pack(fill='x', side='top', padx=5, pady=5)
+
+        self.table_vs = ttk.Scrollbar(self.frame_table, orient='vertical')
+        self.table_vs.pack(fill='y', side='right')
+        self.table_hs = ttk.Scrollbar(self.frame_table, orient='horizontal')
+        self.table_hs.pack(fill='x', side='bottom')
+
+        self.table = ttk.Treeview(self.frame_table, selectmode='browse',
+                                  yscrollcommand=self.table_vs.set,
+                                  xscrollcommand=self.table_hs.set)
+        self.table_vs.config(command=self.table.yview)
+        self.table_hs.config(command=self.table.xview)
         self.table.pack(fill='x', side='top')
 
         self.frame0 = tk.Frame(self.frame)
@@ -238,9 +250,14 @@ class UIMain:
         if len(user_path) > 0:
             self.editor_path.insert(0, user_path)
 
+        self.check_error_var = tk.IntVar()
+        self.check_error = tk.Checkbutton(self.frame1, text='show error', variable=self.check_error_var,
+                                          onvalue=1, offvalue=0, command=self.click_check_error)
+        self.check_error.pack(side='right', padx=5, pady=2)
+
         self.check_global_var = tk.IntVar()
         self.check_global = tk.Checkbutton(self.frame1, text='Global Proxy', variable=self.check_global_var,
-                                           onvalue=1, offvalue=0, command=self.click_check_global)
+                                           onvalue=1, offvalue=0)
         self.check_global.pack(side='right', padx=5, pady=2)
 
         self.editor_http_port = tk.Entry(self.frame1, width=8)
@@ -265,11 +282,14 @@ class UIMain:
 
         self.text_stdout_vs = tk.Scrollbar(self.frame_out, orient='vertical')
         self.text_stdout_vs.pack(fill='y', side='right')
+        self.text_stdout_hs = tk.Scrollbar(self.frame_out, orient='horizontal')
+        self.text_stdout_hs.pack(fill='x', side='bottom')
 
-        self.text_stdout = tk.Text(self.frame_out, height=10,
-                                   yscrollcommand=self.text_stdout_vs.set)
-
+        self.text_stdout = tk.Text(self.frame_out, height=10, wrap='none',
+                                   yscrollcommand=self.text_stdout_vs.set,
+                                   xscrollcommand=self.text_stdout_hs.set)
         self.text_stdout_vs.config(command=self.text_stdout.yview)
+        self.text_stdout_hs.config(command=self.text_stdout.xview)
         self.text_stdout.pack(fill='x', side='top')
 
         self.frame_err = tk.Frame(self.frame)
@@ -280,11 +300,14 @@ class UIMain:
 
         self.text_stderr_vs = tk.Scrollbar(self.frame_err, orient='vertical')
         self.text_stderr_vs.pack(fill='y', side='right')
+        self.text_stderr_hs = tk.Scrollbar(self.frame_err, orient='horizontal')
+        self.text_stderr_hs.pack(fill='x', side='bottom')
 
-        self.text_stderr = tk.Text(self.frame_err, height=10,
-                                   yscrollcommand=self.text_stderr_vs.set)
-
+        self.text_stderr = tk.Text(self.frame_err, height=10, wrap='none',
+                                   yscrollcommand=self.text_stderr_vs.set,
+                                   xscrollcommand=self.text_stderr_hs.set)
         self.text_stderr_vs.config(command=self.text_stderr.yview)
+        self.text_stderr_hs.config(command=self.text_stderr.xview)
         self.text_stderr.pack(fill='x', side='top')
 
         self.table_popup = tk.Menu(self.root, tearoff=0)
@@ -295,15 +318,15 @@ class UIMain:
 
         self.table['columns'] = ('NAME', 'TYPE', 'ADDR', 'PORT', 'CIPHER', 'NETWORK', 'SECURITY', 'SERVERNAME')
 
-        self.table.column('#0', anchor=tk.CENTER, width=40)
-        self.table.column('NAME', anchor=tk.CENTER, width=60)
-        self.table.column('TYPE', anchor=tk.CENTER, width=60)
-        self.table.column('ADDR', anchor=tk.CENTER, width=60)
-        self.table.column('PORT', anchor=tk.CENTER, width=60)
-        self.table.column('CIPHER', anchor=tk.CENTER, width=80)
-        self.table.column('NETWORK', anchor=tk.CENTER, width=80)
-        self.table.column('SECURITY', anchor=tk.CENTER, width=80)
-        self.table.column('SERVERNAME', anchor=tk.CENTER, width=100)
+        self.table.column('#0', anchor=tk.CENTER, width=40, stretch=False)
+        self.table.column('NAME', anchor=tk.CENTER, width=60, stretch=False)
+        self.table.column('TYPE', anchor=tk.CENTER, width=60, stretch=False)
+        self.table.column('ADDR', anchor=tk.CENTER, width=60, stretch=False)
+        self.table.column('PORT', anchor=tk.CENTER, width=60, stretch=False)
+        self.table.column('CIPHER', anchor=tk.CENTER, width=80, stretch=False)
+        self.table.column('NETWORK', anchor=tk.CENTER, width=80, stretch=False)
+        self.table.column('SECURITY', anchor=tk.CENTER, width=80, stretch=False)
+        self.table.column('SERVERNAME', anchor=tk.CENTER, width=100, stretch=False)
 
         self.table.heading('#0', text='', anchor=tk.CENTER)
         self.table.heading('NAME', text='NAME', anchor=tk.CENTER)
@@ -317,6 +340,13 @@ class UIMain:
 
         self.table.bind('<Button-2>', self.do_table_popup)  # for mac
         self.table.bind('<Button-3>', self.do_table_popup)  # for win
+
+        self.root.update()
+        self.min_sz = (self.frame.winfo_width(), self.frame.winfo_height())
+        self.frame_err.pack_forget()
+        self.root.update()
+        self.min_sz_noerr = (self.frame.winfo_width(), self.frame.winfo_height())
+        self.root.minsize(self.min_sz_noerr[0], self.min_sz_noerr[1])
 
     def root_close(self):
         print('root close')
@@ -369,8 +399,14 @@ class UIMain:
                               text=(check if cur_iid == self.cur_svr else uncheck), values=val)
             cur_iid += 1
 
-    def click_check_global(self):
-        print(f'click check global: {self.check_global_var.get()}')
+    def click_check_error(self):
+        print(f'click check global: {self.check_error_var.get()}')
+        if self.check_error_var.get() == 1:
+            self.frame_err.pack(fill='x', side='top', padx=5, pady=5)
+            self.root.minsize(self.min_sz[0], self.min_sz[1])
+        else:
+            self.frame_err.pack_forget()
+            self.root.minsize(self.min_sz_noerr[0], self.min_sz_noerr[1])
 
     def do_table_popup(self, event):
         iid = self.table.identify_row(event.y)
