@@ -13,20 +13,61 @@ import datetime
 
 class ChildProcHttpGet(threading.Thread):
 
-    def __init__(self, url):
+    def __init__(self, url, proxy):
         threading.Thread.__init__(self)
         self.url = url
+        self.proxy = proxy
         self.ret = b''
 
     def run(self):
         try:
-            print(f'system proxy: {urllib.request.getproxies()}')
+            print(f'http get system proxy: {urllib.request.getproxies()}')
+            print(f'http get current proxy: {self.proxy}')
             req = urllib.request.Request(self.url)
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler(self.proxy))
             response = opener.open(req)
             self.ret = response.read()
         except Exception as e:
-            print(e)
+            print(f'http get exception: {e}')
+
+
+class GeoInfoUnit(threading.Thread):
+
+    def __init__(self, path, url, http_port):
+        threading.Thread.__init__(self)
+        self.path = path
+        self.url = url
+        self.proxy = {'http': f'http://127.0.0.1:{http_port}', 'https': f'http://127.0.0.1:{http_port}'}
+        self.ret = b''
+        self.need_rewrite = False
+
+    def run(self):
+        try:
+            print(f'geo unit system proxy: {urllib.request.getproxies()}')
+            print(f'geo unit current proxy: {self.proxy}')
+            req = urllib.request.Request(self.url)
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler(self.proxy))
+            response = opener.open(req)
+            self.ret = response.read()
+
+            print(f'Update geo unit ret length: {len(self.ret)}')
+
+            if len(self.ret) > 0:
+                if not os.path.exists(self.path):
+                    print(f'Update geo unit file does not exist: {self.path}')
+                    self.need_rewrite = True
+                else:
+                    f = open(self.path, 'rb')
+                    cur_geo = f.read()
+                    f.close()
+                    if cur_geo != self.ret:
+                        print(f'Update geo unit but file has expired: {self.path}')
+                        self.need_rewrite = True
+                    else:
+                        print(f'Update geo unit file is the latest: {self.path}')
+
+        except Exception as e:
+            print(f'geo unit exception: {e}')
 
 
 def parse_svrs(data):
@@ -182,6 +223,10 @@ class UIMain:
         self.cur_popup = 0
         self.config_obj = ConfigObj()
 
+        self.http_get_geoip = None
+        self.http_get_geoipcp = None
+        self.http_get_geosite = None
+
         self.process = None
         self.out_q = None
         self.err_q = None
@@ -232,9 +277,13 @@ class UIMain:
         if len(user_url) > 0:
             self.editor_url.insert(0, user_url)
 
-        self.btn_update = tk.Button(self.frame0, text='Update Subscription',
-                                    command=self.click_update_subscription)
-        self.btn_update.pack(side='right', padx=5, pady=2)
+        self.btn_update_geo = tk.Button(self.frame0, text='Update Geography',
+                                        command=self.click_update_geography)
+        self.btn_update_geo.pack(side='right', padx=5, pady=2)
+
+        self.btn_update_sub = tk.Button(self.frame0, text='Update Subscription',
+                                        command=self.click_update_subscription)
+        self.btn_update_sub.pack(side='right', padx=5, pady=2)
 
         self.frame1 = tk.Frame(self.frame)
         self.frame1.pack(fill='x', side='top')
@@ -367,14 +416,14 @@ class UIMain:
         self.update_svr_lst_to_ui()
 
         print(f'Start update subscription: {url}')
-        self.http_get = ChildProcHttpGet(url)
+        self.http_get = ChildProcHttpGet(url, {})
         self.http_get.start()
         self.root.after(100, func=self.check_update_subscription)
 
     def check_update_subscription(self):
         if self.http_get and self.http_get.is_alive():
             self.root.after(100, func=self.check_update_subscription)
-            print('Wait...')
+            print('Subscription wait...')
             return
 
         if self.http_get:
@@ -382,6 +431,77 @@ class UIMain:
             self.svr_lst = parse_svrs(self.http_get.ret)
             self.http_get = None
             self.update_svr_lst_to_ui()
+
+    def click_update_geography(self):
+        if self.http_get_geoip or self.http_get_geosite:
+            print('Geography are currently being updated')
+            return
+
+        if not self.process:
+            messagebox.showinfo('update geography', 'proxy is not running')
+            return
+
+        print('Start update geography')
+
+        path = os.path.join(self.editor_path.get(), 'geoip.dat')
+        url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip.dat'
+        self.http_get_geoip = GeoInfoUnit(path, url, self.config_obj.http_port)
+
+        path = os.path.join(self.editor_path.get(), 'geoip-only-cn-private.dat')
+        url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip-only-cn-private.dat'
+        self.http_get_geoipcp = GeoInfoUnit(path, url, self.config_obj.http_port)
+
+        path = os.path.join(self.editor_path.get(), 'geosite.dat')
+        url = 'https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat'
+        self.http_get_geosite = GeoInfoUnit(path, url, self.config_obj.http_port)
+
+        self.http_get_geoip.start()
+        self.http_get_geoipcp.start()
+        self.http_get_geosite.start()
+        self.root.after(100, func=self.check_update_geography)
+
+    def check_update_geography(self):
+        if (self.http_get_geoip and self.http_get_geoip.is_alive()) or (
+                self.http_get_geoipcp and self.http_get_geoipcp.is_alive()) or (
+                self.http_get_geosite and self.http_get_geosite.is_alive()):
+            self.root.after(100, func=self.check_update_geography)
+            print('Geography wait...')
+            return
+
+        need_restart = self.process is not None
+        need_rewrite = False
+        if self.http_get_geoip and self.http_get_geoip.need_rewrite:
+            need_rewrite = True
+        if self.http_get_geoipcp and self.http_get_geoipcp.need_rewrite:
+            need_rewrite = True
+        if self.http_get_geosite and self.http_get_geosite.need_rewrite:
+            need_rewrite = True
+
+        if need_rewrite:
+            print('Update geography restart')
+            self.stop_v2ray()
+
+            if self.http_get_geoip and self.http_get_geoip.need_rewrite:
+                f = open(self.http_get_geoip.path, 'wb')
+                f.write(self.http_get_geoip.ret)
+                f.close()
+
+            if self.http_get_geoipcp and self.http_get_geoipcp.need_rewrite:
+                f = open(self.http_get_geoipcp.path, 'wb')
+                f.write(self.http_get_geoipcp.ret)
+                f.close()
+
+            if self.http_get_geosite and self.http_get_geosite.need_rewrite:
+                f = open(self.http_get_geosite.path, 'wb')
+                f.write(self.http_get_geosite.ret)
+                f.close()
+
+            if need_restart:
+                self.start_v2ray()
+
+        self.http_get_geoip = None
+        self.http_get_geoipcp = None
+        self.http_get_geosite = None
 
     def update_svr_lst_to_ui(self):
         self.table.delete(*self.table.get_children())
