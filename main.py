@@ -11,6 +11,15 @@ import os
 import datetime
 
 
+class ModalInfo(tk.Toplevel):
+    def __init__(self, root, title, message, *args):
+        tk.Toplevel.__init__(self, root, *args)
+        self.title(title)
+        tk.Label(self, text=message).pack(side='top', padx=30, pady=30)
+        tk.Button(self, text="Close", command=self.destroy).pack(side='bottom', padx=10, pady=10)
+        self.grab_set()
+
+
 class ChildProcHttpGet(threading.Thread):
 
     def __init__(self, url, proxy):
@@ -406,7 +415,7 @@ class UIMain:
 
         url = self.editor_url.get()
         if len(url) <= 0:
-            messagebox.showinfo('update subscription', 'url is empty')
+            ModalInfo(self.root, 'update subscription', 'url is empty')
             return
 
         self.stop_v2ray()
@@ -438,7 +447,7 @@ class UIMain:
             return
 
         if not self.process:
-            messagebox.showinfo('update geography', 'proxy is not running')
+            ModalInfo(self.root, 'update geography', 'proxy is not running')
             return
 
         print('Start update geography')
@@ -609,21 +618,21 @@ class UIMain:
 
         path = self.editor_path.get()
         if len(path) <= 0:
-            messagebox.showinfo('start v2ray', 'path is empty')
+            ModalInfo(self.root, 'start v2ray', 'path is empty')
             return
 
         socks_port = self.editor_socks_port.get()
         if socks_port.isdigit():
             self.config_obj.socks_port = int(socks_port)
         else:
-            messagebox.showinfo('start v2ray', 'socks port error')
+            ModalInfo(self.root, 'start v2ray', 'socks port error')
             return
 
         http_port = self.editor_http_port.get()
         if http_port.isdigit():
             self.config_obj.http_port = int(http_port)
         else:
-            messagebox.showinfo('start v2ray', 'http port error')
+            ModalInfo(self.root, 'start v2ray', 'http port error')
             return
 
         self.config_obj.global_proxy = (self.check_global_var.get() == 1)
@@ -636,11 +645,11 @@ class UIMain:
         if not os.path.exists(exe_path):
             exe_path = os.path.join(path, 'v2ray')
         if not os.path.exists(exe_path):
-            messagebox.showinfo('start v2ray', 'v2ray can not found')
+            ModalInfo(self.root, 'start v2ray', 'v2ray can not found')
             return
 
         if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
-            messagebox.showinfo('start v2ray', 'server index incorrect')
+            ModalInfo(self.root, 'start v2ray', 'server index incorrect')
             return
 
         config_path = os.path.join(path, 'config.json')
