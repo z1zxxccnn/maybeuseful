@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
 import urllib.request
+import socket
 import base64
 import json
 import subprocess
@@ -11,12 +12,32 @@ import os
 import datetime
 
 
+g_pre_getaddrinfo = socket.getaddrinfo
+g_dns_cache = {}
+
+
+def new_getaddrinfo(*args):
+    print(f'getaddrinfo g_dns_cache: {g_dns_cache}')
+    print(f'getaddrinfo args: {args}')
+    res = g_pre_getaddrinfo(*args)
+    print(f'getaddrinfo res: {res}')
+    if args[0] in g_dns_cache:
+        new_sockaddr = (g_dns_cache[args[0]], ) + res[0][4][1:]
+        print(f'getaddrinfo new_sockaddr: {new_sockaddr}')
+        res = [res[0][:4] + (new_sockaddr, ), ]
+        print(f'getaddrinfo new res: {res}')
+    return res
+
+
+socket.getaddrinfo = new_getaddrinfo
+
+
 class ModalInfo(tk.Toplevel):
     def __init__(self, root, title, message, *args):
         tk.Toplevel.__init__(self, root, *args)
         self.title(title)
         tk.Label(self, text=message).pack(side='top', padx=30, pady=30)
-        tk.Button(self, text="Close", command=self.destroy).pack(side='bottom', padx=10, pady=10)
+        tk.Button(self, text='Close', command=self.destroy).pack(side='bottom', padx=10, pady=10)
         self.grab_set()
 
 
@@ -244,6 +265,7 @@ class UIMain:
 
         user_url = ''
         user_path = ''
+        user_dns = ''
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         if os.path.exists(user_file):
             f_user = open(user_file, 'rb')
@@ -252,6 +274,7 @@ class UIMain:
             data = json.loads(data)
             user_url = data.get('user_url', '')
             user_path = data.get('user_path', '')
+            user_dns = data.get('user_dns', '')
 
         self.root = tk.Tk()
         self.root.title('hello python')
@@ -328,6 +351,21 @@ class UIMain:
 
         self.label_socks_port = tk.Label(self.frame1, text='socks-port:')
         self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.frame2 = tk.Frame(self.frame)
+        self.frame2.pack(fill='x', side='top')
+
+        self.label_dns = tk.Label(self.frame2, text='DNS:')
+        self.label_dns.pack(side='left', padx=5, pady=2)
+
+        self.editor_dns = tk.Entry(self.frame2)
+        self.editor_dns.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_dns) > 0:
+            self.editor_dns.insert(0, user_dns)
+
+        self.btn_update_dns = tk.Button(self.frame2, text='Update DNS',
+                                        command=self.click_update_dns)
+        self.btn_update_dns.pack(side='right', padx=5, pady=2)
 
         self.frame_out = tk.Frame(self.frame)
         self.frame_out.pack(fill='x', side='top', padx=5, pady=5)
@@ -512,6 +550,17 @@ class UIMain:
         self.http_get_geoipcp = None
         self.http_get_geosite = None
 
+    def click_update_dns(self):
+        dns = self.editor_dns.get()
+        print(f'Start update dns: {dns}')
+        try:
+            d = json.loads(dns)
+            g_dns_cache.clear()
+            g_dns_cache.update(d)
+        except Exception as e:
+            print(f'update dns exception: {e}')
+        print(f'End update dns: {g_dns_cache}')
+
     def update_svr_lst_to_ui(self):
         self.table.delete(*self.table.get_children())
 
@@ -670,7 +719,9 @@ class UIMain:
 
         self.subproc_data()
 
-        data = {'user_url': self.editor_url.get(), 'user_path': self.editor_path.get()}
+        data = {'user_url': self.editor_url.get(),
+                'user_path': self.editor_path.get(),
+                'user_dns': self.editor_dns.get()}
         data = json.dumps(data, indent=2)
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         f_user = open(user_file, 'wb')
