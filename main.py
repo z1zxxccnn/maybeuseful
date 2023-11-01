@@ -11,7 +11,6 @@ import queue
 import os
 import datetime
 
-
 g_pre_getaddrinfo = socket.getaddrinfo
 g_dns_cache = {}
 
@@ -22,9 +21,9 @@ def new_getaddrinfo(*args):
     res = g_pre_getaddrinfo(*args)
     print(f'getaddrinfo res: {res}')
     if args[0] in g_dns_cache:
-        new_sockaddr = (g_dns_cache[args[0]], ) + res[0][4][1:]
+        new_sockaddr = (g_dns_cache[args[0]],) + res[0][4][1:]
         print(f'getaddrinfo new_sockaddr: {new_sockaddr}')
-        res = [res[0][:4] + (new_sockaddr, ), ]
+        res = [res[0][:4] + (new_sockaddr,), ]
         print(f'getaddrinfo new res: {res}')
     return res
 
@@ -157,6 +156,8 @@ class ConfigObj:
         self.socks_port = g_default_socks_port
         self.http_port = g_default_http_port
         self.global_proxy = False
+        self.lan_connect = False
+        self.ad_allow = False
 
     def gen_json(self, svr):
         d = {}
@@ -164,13 +165,15 @@ class ConfigObj:
         log = {'access': '', 'error': '', 'loglevel': 'warning'}
         d['log'] = log
 
-        inbound0 = {'tag': 'socks', 'port': self.socks_port, 'listen': '127.0.0.1', 'protocol': 'socks'}
+        listen_ip = '0.0.0.0' if self.lan_connect else '127.0.0.1'
+
+        inbound0 = {'tag': 'socks', 'port': self.socks_port, 'listen': listen_ip, 'protocol': 'socks'}
         sniffing = {'enabled': True, 'destOverride': ['http', 'tls']}
         settings = {'auth': 'noauth', 'udp': True, 'allowTransparent': False}
         inbound0['sniffing'] = sniffing
         inbound0['settings'] = settings
 
-        inbound1 = {'tag': 'http', 'port': self.http_port, 'listen': '127.0.0.1', 'protocol': 'http'}
+        inbound1 = {'tag': 'http', 'port': self.http_port, 'listen': listen_ip, 'protocol': 'http'}
         sniffing = {'enabled': True, 'destOverride': ['http', 'tls']}
         settings = {'auth': 'noauth', 'udp': True, 'allowTransparent': False}
         inbound1['sniffing'] = sniffing
@@ -218,6 +221,8 @@ class ConfigObj:
         rule5 = {'type': 'field', 'port': '0-65535', 'outboundTag': 'proxy', 'enabled': True}
         if self.global_proxy:
             routing['rules'] = [rule0, rule5]
+        elif self.ad_allow:
+            routing['rules'] = [rule0, rule1, rule3, rule4, rule5]
         else:
             routing['rules'] = [rule0, rule1, rule2, rule3, rule4, rule5]
 
@@ -320,52 +325,65 @@ class UIMain:
         self.frame1 = tk.Frame(self.frame)
         self.frame1.pack(fill='x', side='top')
 
-        self.label_path = tk.Label(self.frame1, text='V2Ray PATH:')
-        self.label_path.pack(side='left', padx=5, pady=2)
-
-        self.editor_path = tk.Entry(self.frame1)
-        self.editor_path.pack(fill='x', side='left', expand=True, padx=5, pady=2)
-        if len(user_path) > 0:
-            self.editor_path.insert(0, user_path)
-
-        self.check_error_var = tk.IntVar()
-        self.check_error = tk.Checkbutton(self.frame1, text='show error', variable=self.check_error_var,
-                                          onvalue=1, offvalue=0, command=self.click_check_error)
-        self.check_error.pack(side='right', padx=5, pady=2)
-
-        self.check_global_var = tk.IntVar()
-        self.check_global = tk.Checkbutton(self.frame1, text='Global Proxy', variable=self.check_global_var,
-                                           onvalue=1, offvalue=0)
-        self.check_global.pack(side='right', padx=5, pady=2)
-
-        self.editor_http_port = tk.Entry(self.frame1, width=8)
-        self.editor_http_port.pack(side='right', padx=(0, 5), pady=2)
-        self.editor_http_port.insert(0, str(g_default_http_port))
-
-        self.label_http_port = tk.Label(self.frame1, text='http-port:')
-        self.label_http_port.pack(side='right', padx=(5, 0), pady=2)
-
-        self.editor_socks_port = tk.Entry(self.frame1, width=8)
-        self.editor_socks_port.pack(side='right', padx=(0, 5), pady=2)
-        self.editor_socks_port.insert(0, str(g_default_socks_port))
-
-        self.label_socks_port = tk.Label(self.frame1, text='socks-port:')
-        self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
-
-        self.frame2 = tk.Frame(self.frame)
-        self.frame2.pack(fill='x', side='top')
-
-        self.label_dns = tk.Label(self.frame2, text='DNS:')
+        self.label_dns = tk.Label(self.frame1, text='DNS:')
         self.label_dns.pack(side='left', padx=5, pady=2)
 
-        self.editor_dns = tk.Entry(self.frame2)
+        self.editor_dns = tk.Entry(self.frame1)
         self.editor_dns.pack(fill='x', side='left', expand=True, padx=5, pady=2)
         if len(user_dns) > 0:
             self.editor_dns.insert(0, user_dns)
 
-        self.btn_update_dns = tk.Button(self.frame2, text='Update DNS',
+        self.btn_update_dns = tk.Button(self.frame1, text='Update DNS',
                                         command=self.click_update_dns)
         self.btn_update_dns.pack(side='right', padx=5, pady=2)
+
+        self.frame2 = tk.Frame(self.frame)
+        self.frame2.pack(fill='x', side='top')
+
+        self.label_path = tk.Label(self.frame2, text='V2Ray PATH:')
+        self.label_path.pack(side='left', padx=5, pady=2)
+
+        self.editor_path = tk.Entry(self.frame2)
+        self.editor_path.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_path) > 0:
+            self.editor_path.insert(0, user_path)
+
+        self.editor_http_port = tk.Entry(self.frame2, width=8)
+        self.editor_http_port.pack(side='right', padx=(0, 5), pady=2)
+        self.editor_http_port.insert(0, str(g_default_http_port))
+
+        self.label_http_port = tk.Label(self.frame2, text='http-port:')
+        self.label_http_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.editor_socks_port = tk.Entry(self.frame2, width=8)
+        self.editor_socks_port.pack(side='right', padx=(0, 5), pady=2)
+        self.editor_socks_port.insert(0, str(g_default_socks_port))
+
+        self.label_socks_port = tk.Label(self.frame2, text='socks-port:')
+        self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.frame3 = tk.Frame(self.frame)
+        self.frame3.pack(fill='x', side='top')
+
+        self.check_global_var = tk.IntVar()
+        self.check_global = tk.Checkbutton(self.frame3, text='Global Proxy', variable=self.check_global_var,
+                                           onvalue=1, offvalue=0)
+        self.check_global.pack(side='left', padx=5, pady=2)
+
+        self.check_lan_var = tk.IntVar()
+        self.check_lan = tk.Checkbutton(self.frame3, text='LAN Connect', variable=self.check_lan_var,
+                                        onvalue=1, offvalue=0)
+        self.check_lan.pack(side='left', padx=5, pady=2)
+
+        self.check_ad_var = tk.IntVar()
+        self.check_ad = tk.Checkbutton(self.frame3, text='Ad Allow', variable=self.check_ad_var,
+                                       onvalue=1, offvalue=0)
+        self.check_ad.pack(side='left', padx=5, pady=2)
+
+        self.check_error_var = tk.IntVar()
+        self.check_error = tk.Checkbutton(self.frame3, text='show error', variable=self.check_error_var,
+                                          onvalue=1, offvalue=0, command=self.click_check_error)
+        self.check_error.pack(side='left', padx=5, pady=2)
 
         self.frame_out = tk.Frame(self.frame)
         self.frame_out.pack(fill='x', side='top', padx=5, pady=5)
@@ -685,10 +703,14 @@ class UIMain:
             return
 
         self.config_obj.global_proxy = (self.check_global_var.get() == 1)
+        self.config_obj.lan_connect = (self.check_lan_var.get() == 1)
+        self.config_obj.ad_allow = (self.check_ad_var.get() == 1)
 
         print(f'socks_port: {self.config_obj.socks_port}, '
               f'http_port: {self.config_obj.http_port}, '
-              f'global_proxy: {self.config_obj.global_proxy}')
+              f'global_proxy: {self.config_obj.global_proxy}, '
+              f'lan_connect: {self.config_obj.lan_connect}, '
+              f'ad_allow: {self.config_obj.ad_allow}')
 
         exe_path = os.path.join(path, 'wv2ray.exe')
         if not os.path.exists(exe_path):
