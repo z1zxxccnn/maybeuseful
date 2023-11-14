@@ -155,6 +155,7 @@ class ConfigObj:
     def __init__(self):
         self.socks_port = g_default_socks_port
         self.http_port = g_default_http_port
+        self.exclude_domain = []
         self.global_proxy = False
         self.lan_connect = False
         self.ad_allow = False
@@ -211,7 +212,7 @@ class ConfigObj:
         routing = {'domainStrategy': 'IPIfNonMatch'}
         rule0 = {'type': 'field', 'inboundTag': ['api', ], 'outboundTag': 'api', 'enabled': True}
         rule1 = {'type': 'field', 'outboundTag': 'direct', 'enabled': True,
-                 'domain': ['domain:example-example.com', 'domain:example-example2.com']}
+                 'domain': self.exclude_domain}
         rule2 = {'type': 'field', 'outboundTag': 'block', 'enabled': True,
                  'domain': ['geosite:category-ads-all', ]}
         rule3 = {'type': 'field', 'outboundTag': 'direct', 'enabled': True,
@@ -271,6 +272,12 @@ class UIMain:
         user_url = ''
         user_path = ''
         user_dns = ''
+        socks_port = str(g_default_socks_port)
+        http_port = str(g_default_http_port)
+        user_exclude = ''
+        global_proxy = False
+        lan_connect = False
+        ad_allow = False
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         if os.path.exists(user_file):
             f_user = open(user_file, 'rb')
@@ -280,6 +287,12 @@ class UIMain:
             user_url = data.get('user_url', '')
             user_path = data.get('user_path', '')
             user_dns = data.get('user_dns', '')
+            socks_port = str(data.get('socks_port', g_default_socks_port))
+            http_port = str(data.get('http_port', g_default_http_port))
+            user_exclude = data.get('user_exclude', '')
+            global_proxy = bool(data.get('global_proxy', False))
+            lan_connect = bool(data.get('lan_connect', False))
+            ad_allow = bool(data.get('ad_allow', False))
 
         self.root = tk.Tk()
         self.root.title('hello python')
@@ -350,14 +363,14 @@ class UIMain:
 
         self.editor_http_port = tk.Entry(self.frame2, width=8)
         self.editor_http_port.pack(side='right', padx=(0, 5), pady=2)
-        self.editor_http_port.insert(0, str(g_default_http_port))
+        self.editor_http_port.insert(0, http_port)
 
         self.label_http_port = tk.Label(self.frame2, text='http-port:')
         self.label_http_port.pack(side='right', padx=(5, 0), pady=2)
 
         self.editor_socks_port = tk.Entry(self.frame2, width=8)
         self.editor_socks_port.pack(side='right', padx=(0, 5), pady=2)
-        self.editor_socks_port.insert(0, str(g_default_socks_port))
+        self.editor_socks_port.insert(0, socks_port)
 
         self.label_socks_port = tk.Label(self.frame2, text='socks-port:')
         self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
@@ -365,23 +378,37 @@ class UIMain:
         self.frame3 = tk.Frame(self.frame)
         self.frame3.pack(fill='x', side='top')
 
+        self.label_exclude = tk.Label(self.frame3, text='Exclude Domain:')
+        self.label_exclude.pack(side='left', padx=5, pady=2)
+
+        self.editor_exclude = tk.Entry(self.frame3)
+        self.editor_exclude.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_exclude) > 0:
+            self.editor_exclude.insert(0, user_exclude)
+
+        self.frame4 = tk.Frame(self.frame)
+        self.frame4.pack(fill='x', side='top')
+
         self.check_global_var = tk.IntVar()
-        self.check_global = tk.Checkbutton(self.frame3, text='Global Proxy', variable=self.check_global_var,
+        self.check_global = tk.Checkbutton(self.frame4, text='Global Proxy', variable=self.check_global_var,
                                            onvalue=1, offvalue=0)
         self.check_global.pack(side='left', padx=5, pady=2)
+        self.check_global_var.set(global_proxy)
 
         self.check_lan_var = tk.IntVar()
-        self.check_lan = tk.Checkbutton(self.frame3, text='LAN Connect', variable=self.check_lan_var,
+        self.check_lan = tk.Checkbutton(self.frame4, text='LAN Connect', variable=self.check_lan_var,
                                         onvalue=1, offvalue=0)
         self.check_lan.pack(side='left', padx=5, pady=2)
+        self.check_lan_var.set(lan_connect)
 
         self.check_ad_var = tk.IntVar()
-        self.check_ad = tk.Checkbutton(self.frame3, text='Ad Allow', variable=self.check_ad_var,
+        self.check_ad = tk.Checkbutton(self.frame4, text='Ad Allow', variable=self.check_ad_var,
                                        onvalue=1, offvalue=0)
         self.check_ad.pack(side='left', padx=5, pady=2)
+        self.check_ad_var.set(ad_allow)
 
         self.check_error_var = tk.IntVar()
-        self.check_error = tk.Checkbutton(self.frame3, text='show error', variable=self.check_error_var,
+        self.check_error = tk.Checkbutton(self.frame4, text='show error', variable=self.check_error_var,
                                           onvalue=1, offvalue=0, command=self.click_check_error)
         self.check_error.pack(side='left', padx=5, pady=2)
 
@@ -599,7 +626,7 @@ class UIMain:
             cur_iid += 1
 
     def click_check_error(self):
-        print(f'click check global: {self.check_error_var.get()}')
+        print(f'click check error: {self.check_error_var.get()}')
         if self.check_error_var.get() == 1:
             self.frame_err.pack(fill='x', side='top', padx=5, pady=5)
             self.root.minsize(self.min_sz[0], self.min_sz[1])
@@ -702,12 +729,17 @@ class UIMain:
             ModalInfo(self.root, 'start v2ray', 'http port error')
             return
 
+        exclude_domain = self.editor_exclude.get().split(',')
+        exclude_domain = ['domain:' + it.strip() for it in exclude_domain]
+        self.config_obj.exclude_domain = exclude_domain
+
         self.config_obj.global_proxy = (self.check_global_var.get() == 1)
         self.config_obj.lan_connect = (self.check_lan_var.get() == 1)
         self.config_obj.ad_allow = (self.check_ad_var.get() == 1)
 
         print(f'socks_port: {self.config_obj.socks_port}, '
               f'http_port: {self.config_obj.http_port}, '
+              f'exclude_domain: {self.config_obj.exclude_domain}, '
               f'global_proxy: {self.config_obj.global_proxy}, '
               f'lan_connect: {self.config_obj.lan_connect}, '
               f'ad_allow: {self.config_obj.ad_allow}')
@@ -743,7 +775,13 @@ class UIMain:
 
         data = {'user_url': self.editor_url.get(),
                 'user_path': self.editor_path.get(),
-                'user_dns': self.editor_dns.get()}
+                'user_dns': self.editor_dns.get(),
+                'socks_port': self.config_obj.socks_port,
+                'http_port': self.config_obj.http_port,
+                'user_exclude': self.editor_exclude.get(),
+                'global_proxy': self.config_obj.global_proxy,
+                'lan_connect': self.config_obj.lan_connect,
+                'ad_allow': self.config_obj.ad_allow}
         data = json.dumps(data, indent=2)
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         f_user = open(user_file, 'wb')
