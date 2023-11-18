@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox
 import urllib.request
 import socket
 import base64
@@ -10,6 +9,8 @@ import threading
 import queue
 import os
 import datetime
+import locale
+import platform
 
 g_pre_getaddrinfo = socket.getaddrinfo
 g_dns_cache = {}
@@ -97,6 +98,185 @@ class GeoInfoUnit(threading.Thread):
 
         except Exception as e:
             print(f'geo unit exception: {e}')
+
+
+class UWPLoopbackQuery(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.ret_lst = []
+
+    def run(self):
+        try:
+            p1 = subprocess.Popen(['powershell.exe', 'Get-AppxPackage'],
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
+            outs1, errs1 = p1.communicate()
+            outs1 = outs1.decode(locale.getpreferredencoding())
+            errs1 = errs1.decode(locale.getpreferredencoding())
+            p2 = subprocess.Popen(['CheckNetIsolation', 'LoopbackExempt', '-s'],
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
+            outs2, errs2 = p2.communicate()
+            outs2 = outs2.decode(locale.getpreferredencoding())
+            errs2 = errs2.decode(locale.getpreferredencoding())
+
+            print(f'Get-AppxPackage, err: {errs1}')
+            print(f'CheckNetIsolation LoopbackExempt -s, err: {errs2}')
+
+            outs1_lst = [it.strip() for it in outs1.split('\r\n\r\n')]
+            outs1_lst = [it for it in outs1_lst if len(it) > 0]
+            outs1_lst = \
+                [[it2 for it2 in it.split('\r\n') if it2.startswith('PackageFamilyName')][0] for it in outs1_lst]
+            outs1_lst = [it.split(':')[1].strip() for it in outs1_lst]
+
+            outs2_lst = [it.strip() for it in outs2.split('\r\n\r\n')]
+            outs2_lst = [it for it in outs2_lst if it.startswith('[')]
+            outs2_lst = [[it2 for it2 in it.split('\r\n')][1] for it in outs2_lst]
+            outs2_lst = [it.split(':')[1].strip().lower() for it in outs2_lst]
+
+            enable_set = set(outs2_lst)
+            for it in outs1_lst:
+                self.ret_lst.append(((it.lower() in enable_set), it))
+                print(self.ret_lst[-1])
+        except Exception as e:
+            print(f'UWP Loopback query failed: {e}')
+
+
+class UWPLoopbackOpt(threading.Thread):
+
+    def __init__(self, name, add_or_del):
+        threading.Thread.__init__(self)
+        self.name = name
+        self.add_or_del = add_or_del
+
+    def run(self):
+        try:
+            cmd_lst = ['CheckNetIsolation', 'LoopbackExempt']
+            cmd_lst.append('-a') if self.add_or_del else cmd_lst.append('-d')
+            cmd_lst.append(f'-n={self.name}')
+            p = subprocess.Popen(cmd_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            outs, errs = p.communicate()
+            outs = outs.decode(locale.getpreferredencoding())
+            errs = errs.decode(locale.getpreferredencoding())
+            print(f'UWP Loopback opt, out: {outs}')
+            print(f'UWP Loopback opt, err: {errs}')
+
+        except Exception as e:
+            print(f'UWP Loopback opt failed: {e}')
+
+
+class ModalUWPLoopback(tk.Toplevel):
+
+    def __init__(self, root, *args):
+        tk.Toplevel.__init__(self, root, *args)
+        self.title('UWP Loopback Setting')
+
+        self.frame = tk.Frame(self)
+        self.frame.pack(fill='both')
+
+        self.frame_table = tk.Frame(self.frame)
+        self.frame_table.pack(fill='x', side='top', padx=5, pady=5)
+
+        self.table_vs = ttk.Scrollbar(self.frame_table, orient='vertical')
+        self.table_vs.pack(fill='y', side='right')
+        self.table_hs = ttk.Scrollbar(self.frame_table, orient='horizontal')
+        self.table_hs.pack(fill='x', side='bottom')
+
+        self.table = ttk.Treeview(self.frame_table, selectmode='browse',
+                                  yscrollcommand=self.table_vs.set,
+                                  xscrollcommand=self.table_hs.set)
+        self.table_vs.config(command=self.table.yview)
+        self.table_hs.config(command=self.table.xview)
+        self.table.pack(fill='x', side='top')
+
+        self.table_popup = tk.Menu(self, tearoff=0)
+        self.table_popup.add_command(label='Enable Loopback exempt', command=self.table_popup_enable)
+        self.table_popup.add_command(label='Disable Loopback exempt', command=self.table_popup_disable)
+
+        self.table['columns'] = ('PACKAGE FAMILY NAME',)
+
+        self.table.column('#0', anchor=tk.CENTER, width=40, stretch=False)
+        self.table.column('PACKAGE FAMILY NAME', anchor=tk.W, width=600, stretch=False)
+
+        self.table.heading('#0', text='', anchor=tk.CENTER)
+        self.table.heading('PACKAGE FAMILY NAME', text='PACKAGE FAMILY NAME', anchor=tk.W)
+
+        self.table.bind('<Button-2>', self.do_table_popup)  # for mac
+        self.table.bind('<Button-3>', self.do_table_popup)  # for win
+
+        self.protocol('WM_DELETE_WINDOW', self.window_close)
+
+        self.update()
+        self.min_sz = (self.frame.winfo_width(), self.frame.winfo_height())
+        self.minsize(self.min_sz[0], self.min_sz[1])
+
+        self.pkg_lst = []
+        self.cur_popup = 0
+
+        self.query = UWPLoopbackQuery()
+        self.query.start()
+        self.after(100, func=self.check_uwp_loopback_query)
+
+        self.grab_set()
+
+    def check_uwp_loopback_query(self):
+        if self.query.is_alive():
+            self.after(100, func=self.check_uwp_loopback_query)
+            print('query uwp loopback wait...')
+            return
+
+        print(f'query uwp loopback finish: {len(self.query.ret_lst)}')
+        self.table.delete(*self.table.get_children())
+
+        cur_iid = 0
+        enable = '☑'
+        disable = '☐'
+        for it in self.query.ret_lst:
+            val = (it[1],)
+            self.table.insert(parent='', index='end', iid=cur_iid,
+                              text=(enable if it[0] else disable), values=val)
+            cur_iid += 1
+
+    def do_table_popup(self, event):
+        iid = self.table.identify_row(event.y)
+        if len(iid) > 0:
+            self.cur_popup = int(iid)
+            self.table_popup.post(event.x_root, event.y_root)
+
+    def table_popup_enable(self):
+        print(f'call enable loopback exempt, cur: {self.cur_popup}, len: {len(self.query.ret_lst)}')
+        if self.cur_popup < 0 or self.cur_popup >= len(self.query.ret_lst):
+            return
+
+        print(f'call enable loopback exempt, {self.query.ret_lst[self.cur_popup]}')
+        if self.query.ret_lst[self.cur_popup][0]:
+            return
+
+        self.query.ret_lst[self.cur_popup] = (True, self.query.ret_lst[self.cur_popup][1])
+        self.check_uwp_loopback_query()
+
+        opt = UWPLoopbackOpt(self.query.ret_lst[self.cur_popup][1], True)
+        opt.start()
+
+    def table_popup_disable(self):
+        print(f'call disable loopback exempt, cur: {self.cur_popup}, len: {len(self.query.ret_lst)}')
+        if self.cur_popup < 0 or self.cur_popup >= len(self.query.ret_lst):
+            return
+
+        print(f'call disable loopback exempt, {self.query.ret_lst[self.cur_popup]}')
+        if not self.query.ret_lst[self.cur_popup][0]:
+            return
+
+        self.query.ret_lst[self.cur_popup] = (False, self.query.ret_lst[self.cur_popup][1])
+        self.check_uwp_loopback_query()
+
+        opt = UWPLoopbackOpt(self.query.ret_lst[self.cur_popup][1], False)
+        opt.start()
+
+    def window_close(self):
+        print('Modal UWP Loopback window close')
+        self.destroy()
 
 
 def parse_svrs(data):
@@ -412,6 +592,11 @@ class UIMain:
                                           onvalue=1, offvalue=0, command=self.click_check_error)
         self.check_error.pack(side='left', padx=5, pady=2)
 
+        if platform.system() == 'Windows':
+            self.btn_uwp_loopback = tk.Button(self.frame4, text='UWP Loopback',
+                                              command=self.click_uwp_loopback)
+            self.btn_uwp_loopback.pack(side='left', padx=5, pady=2)
+
         self.frame_out = tk.Frame(self.frame)
         self.frame_out.pack(fill='x', side='top', padx=5, pady=5)
 
@@ -605,6 +790,9 @@ class UIMain:
         except Exception as e:
             print(f'update dns exception: {e}')
         print(f'End update dns: {g_dns_cache}')
+
+    def click_uwp_loopback(self):
+        ModalUWPLoopback(self.root)
 
     def update_svr_lst_to_ui(self):
         self.table.delete(*self.table.get_children())
