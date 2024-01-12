@@ -16,10 +16,15 @@ g_pre_getaddrinfo = socket.getaddrinfo
 g_dns_cache = {}
 
 
-def new_getaddrinfo(*args):
+def new_getaddrinfo(*args, **kwargs):
     print(f'getaddrinfo g_dns_cache: {g_dns_cache}')
     print(f'getaddrinfo args: {args}')
-    res = g_pre_getaddrinfo(*args)
+    print(f'getaddrinfo kwargs: {kwargs}')
+    try:
+        res = g_pre_getaddrinfo(*args)
+    except Exception as e:
+        print(f'getaddrinfo exception: {e}')
+        res = [(socket.AF_INET, args[3], args[2], '', ('127.0.0.1', args[1]))]
     print(f'getaddrinfo res: {res}')
     if args[0] in g_dns_cache:
         new_sockaddr = (g_dns_cache[args[0]],) + res[0][4][1:]
@@ -80,21 +85,21 @@ class GeoInfoUnit(threading.Thread):
             response = opener.open(req)
             self.ret = response.read()
 
-            print(f'Update geo unit ret length: {len(self.ret)}')
+            print(f'update geo unit ret length: {len(self.ret)}')
 
             if len(self.ret) > 0:
                 if not os.path.exists(self.path):
-                    print(f'Update geo unit file does not exist: {self.path}')
+                    print(f'update geo unit file does not exist: {self.path}')
                     self.need_rewrite = True
                 else:
                     f = open(self.path, 'rb')
                     cur_geo = f.read()
                     f.close()
                     if cur_geo != self.ret:
-                        print(f'Update geo unit but file has expired: {self.path}')
+                        print(f'update geo unit but file has expired: {self.path}')
                         self.need_rewrite = True
                     else:
-                        print(f'Update geo unit file is the latest: {self.path}')
+                        print(f'update geo unit file is the latest: {self.path}')
 
         except Exception as e:
             print(f'geo unit exception: {e}')
@@ -434,6 +439,8 @@ class UIMain:
 
     def __init__(self):
         self.http_get = None
+        self.svr_cache = ''
+        self.svr_ret = ''
         self.svr_lst = []
         self.cur_svr = -1
         self.cur_popup = 0
@@ -473,6 +480,7 @@ class UIMain:
             global_proxy = bool(data.get('global_proxy', False))
             lan_connect = bool(data.get('lan_connect', False))
             ad_allow = bool(data.get('ad_allow', False))
+            self.svr_cache = data.get('svr_cache', '').encode('UTF-8')
 
         self.root = tk.Tk()
         self.root.title('hello python')
@@ -671,6 +679,12 @@ class UIMain:
         self.min_sz_noerr = (self.frame.winfo_width(), self.frame.winfo_height())
         self.root.minsize(self.min_sz_noerr[0], self.min_sz_noerr[1])
 
+        if len(self.svr_cache) > 0:
+            print(f'use subscription cache: {self.svr_cache}')
+            self.svr_ret = self.svr_cache
+            self.svr_lst = parse_svrs(self.svr_ret)
+            self.update_svr_lst_to_ui()
+
     def root_close(self):
         print('root close')
         self.stop_v2ray()
@@ -678,7 +692,7 @@ class UIMain:
 
     def click_update_subscription(self):
         if self.http_get:
-            print('Subscriptions are currently being updated')
+            print('subscriptions are currently being updated')
             return
 
         url = self.editor_url.get()
@@ -692,7 +706,7 @@ class UIMain:
         self.cur_popup = 0
         self.update_svr_lst_to_ui()
 
-        print(f'Start update subscription: {url}')
+        print(f'start update subscription: {url}')
         self.http_get = ChildProcHttpGet(url, {})
         self.http_get.start()
         self.root.after(100, func=self.check_update_subscription)
@@ -700,25 +714,27 @@ class UIMain:
     def check_update_subscription(self):
         if self.http_get and self.http_get.is_alive():
             self.root.after(100, func=self.check_update_subscription)
-            print('Subscription wait...')
+            print('subscription wait...')
             return
 
         if self.http_get:
-            print(f'Update subscription returns: {self.http_get.ret}')
-            self.svr_lst = parse_svrs(self.http_get.ret)
+            print(f'update subscription returns: {self.http_get.ret}')
+            print(f'update subscription cache: {self.svr_cache}')
+            self.svr_ret = self.http_get.ret if len(self.http_get.ret) > 0 else self.svr_cache
+            self.svr_lst = parse_svrs(self.svr_ret)
             self.http_get = None
             self.update_svr_lst_to_ui()
 
     def click_update_geography(self):
         if self.http_get_geoip or self.http_get_geosite:
-            print('Geography are currently being updated')
+            print('geography are currently being updated')
             return
 
         if not self.process:
             ModalInfo(self.root, 'update geography', 'proxy is not running')
             return
 
-        print('Start update geography')
+        print('start update geography')
 
         path = os.path.join(self.editor_path.get(), 'geoip.dat')
         url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip.dat'
@@ -742,7 +758,7 @@ class UIMain:
                 self.http_get_geoipcp and self.http_get_geoipcp.is_alive()) or (
                 self.http_get_geosite and self.http_get_geosite.is_alive()):
             self.root.after(100, func=self.check_update_geography)
-            print('Geography wait...')
+            print('geography wait...')
             return
 
         need_restart = self.process is not None
@@ -755,7 +771,7 @@ class UIMain:
             need_rewrite = True
 
         if need_rewrite:
-            print('Update geography restart')
+            print('update geography restart')
             self.stop_v2ray()
 
             if self.http_get_geoip and self.http_get_geoip.need_rewrite:
@@ -782,14 +798,14 @@ class UIMain:
 
     def click_update_dns(self):
         dns = self.editor_dns.get()
-        print(f'Start update dns: {dns}')
+        print(f'start update dns: {dns}')
         try:
             d = json.loads(dns)
             g_dns_cache.clear()
             g_dns_cache.update(d)
         except Exception as e:
             print(f'update dns exception: {e}')
-        print(f'End update dns: {g_dns_cache}')
+        print(f'end update dns: {g_dns_cache}')
 
     def click_uwp_loopback(self):
         ModalUWPLoopback(self.root)
@@ -961,6 +977,7 @@ class UIMain:
 
         self.subproc_data()
 
+        self.svr_cache = self.svr_ret
         data = {'user_url': self.editor_url.get(),
                 'user_path': self.editor_path.get(),
                 'user_dns': self.editor_dns.get(),
@@ -969,7 +986,8 @@ class UIMain:
                 'user_exclude': self.editor_exclude.get(),
                 'global_proxy': self.config_obj.global_proxy,
                 'lan_connect': self.config_obj.lan_connect,
-                'ad_allow': self.config_obj.ad_allow}
+                'ad_allow': self.config_obj.ad_allow,
+                'svr_cache': self.svr_cache.decode('UTF-8')}
         data = json.dumps(data, indent=2)
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         f_user = open(user_file, 'wb')
