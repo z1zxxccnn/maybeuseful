@@ -60,7 +60,7 @@ class ChildProcHttpGet(threading.Thread):
             print(f'http get current proxy: {self.proxy}')
             req = urllib.request.Request(self.url)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler(self.proxy))
-            response = opener.open(req)
+            response = opener.open(req, timeout=30)
             self.ret = response.read()
         except Exception as e:
             print(f'http get exception: {e}')
@@ -82,7 +82,7 @@ class GeoInfoUnit(threading.Thread):
             print(f'geo unit current proxy: {self.proxy}')
             req = urllib.request.Request(self.url)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler(self.proxy))
-            response = opener.open(req)
+            response = opener.open(req, timeout=30)
             self.ret = response.read()
 
             print(f'update geo unit ret length: {len(self.ret)}')
@@ -416,6 +416,41 @@ class ConfigObj:
 
         return json.dumps(d, indent=2)
 
+    def gen_json_disable(self):
+        d = {}
+
+        log = {'access': '', 'error': '', 'loglevel': 'warning'}
+        d['log'] = log
+
+        listen_ip = '0.0.0.0' if self.lan_connect else '127.0.0.1'
+
+        inbound0 = {'tag': 'socks', 'port': self.socks_port, 'listen': listen_ip, 'protocol': 'socks'}
+        sniffing = {'enabled': True, 'destOverride': ['http', 'tls']}
+        settings = {'auth': 'noauth', 'udp': True, 'allowTransparent': False}
+        inbound0['sniffing'] = sniffing
+        inbound0['settings'] = settings
+
+        inbound1 = {'tag': 'http', 'port': self.http_port, 'listen': listen_ip, 'protocol': 'http'}
+        sniffing = {'enabled': True, 'destOverride': ['http', 'tls']}
+        settings = {'auth': 'noauth', 'udp': True, 'allowTransparent': False}
+        inbound1['sniffing'] = sniffing
+        inbound1['settings'] = settings
+
+        d['inbounds'] = [inbound0, inbound1]
+
+        outbound0 = {'tag': 'direct', 'protocol': 'freedom', 'settings': {}}
+
+        d['outbounds'] = [outbound0]
+
+        routing = {'domainStrategy': 'IPIfNonMatch'}
+        rule0 = {'type': 'field', 'inboundTag': ['api', ], 'outboundTag': 'api', 'enabled': True}
+        rule1 = {'type': 'field', 'port': '0-65535', 'outboundTag': 'direct', 'enabled': True}
+        routing['rules'] = [rule0, rule1]
+
+        d['routing'] = routing
+
+        return json.dumps(d, indent=2)
+
 
 class SubProcReader(threading.Thread):
 
@@ -450,6 +485,7 @@ class UIMain:
         self.http_get_geoipcp = None
         self.http_get_geosite = None
 
+        self.proc_dis_proxy = False
         self.process = None
         self.out_q = None
         self.err_q = None
@@ -685,6 +721,8 @@ class UIMain:
             self.svr_lst = parse_svrs(self.svr_ret)
             self.update_svr_lst_to_ui()
 
+        self.start_v2ray(True)
+
     def root_close(self):
         print('root close')
         self.stop_v2ray()
@@ -700,7 +738,7 @@ class UIMain:
             ModalInfo(self.root, 'update subscription', 'url is empty')
             return
 
-        self.stop_v2ray()
+        self.start_v2ray(True)
         self.svr_lst = []
         self.cur_svr = -1
         self.cur_popup = 0
@@ -730,7 +768,7 @@ class UIMain:
             print('geography are currently being updated')
             return
 
-        if not self.process:
+        if not ((self.process is not None) and (not self.proc_dis_proxy)):
             ModalInfo(self.root, 'update geography', 'proxy is not running')
             return
 
@@ -761,7 +799,7 @@ class UIMain:
             print('geography wait...')
             return
 
-        need_restart = self.process is not None
+        need_restart = (self.process is not None) and (not self.proc_dis_proxy)
         need_rewrite = False
         if self.http_get_geoip and self.http_get_geoip.need_rewrite:
             need_rewrite = True
@@ -862,7 +900,7 @@ class UIMain:
 
         if self.cur_svr == self.cur_popup:
             self.cur_svr = -1
-            self.stop_v2ray()
+            self.start_v2ray(True)
 
         self.update_svr_lst_to_ui()
 
@@ -909,8 +947,8 @@ class UIMain:
 
         self.root.after(1000, self.subproc_data)
 
-    def start_v2ray(self):
-        print('start v2ray')
+    def start_v2ray(self, disable=False):
+        print(f'start v2ray, disable: {disable}')
 
         self.stop_v2ray()
 
@@ -955,16 +993,21 @@ class UIMain:
             ModalInfo(self.root, 'start v2ray', 'v2ray can not found')
             return
 
-        if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
-            ModalInfo(self.root, 'start v2ray', 'server index incorrect')
-            return
+        if not disable:
+            if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
+                ModalInfo(self.root, 'start v2ray', 'server index incorrect')
+                return
 
         config_path = os.path.join(path, 'config.json')
-        cur_json = self.config_obj.gen_json(self.svr_lst[self.cur_svr])
+        if not disable:
+            cur_json = self.config_obj.gen_json(self.svr_lst[self.cur_svr])
+        else:
+            cur_json = self.config_obj.gen_json_disable()
         f = open(config_path, 'wb')
         f.write(cur_json.encode('UTF-8'))
         f.close()
 
+        self.proc_dis_proxy = disable
         self.process = subprocess.Popen([exe_path, ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.out_q = queue.Queue()
         self.err_q = queue.Queue()
