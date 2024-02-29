@@ -284,6 +284,44 @@ class ModalUWPLoopback(tk.Toplevel):
         self.destroy()
 
 
+class ClashShowInfo(tk.Toplevel):
+    def __init__(self, root, info, *args):
+        tk.Toplevel.__init__(self, root, *args)
+        self.title('Clash Subscription Info')
+
+        self.frame = tk.Frame(self)
+        self.frame.pack(fill='both')
+
+        self.frame_text = tk.Frame(self.frame)
+        self.frame_text.pack(fill='x', side='top', padx=5, pady=5)
+
+        self.text_vs = tk.Scrollbar(self.frame_text, orient='vertical')
+        self.text_vs.pack(fill='y', side='right')
+        self.text_hs = tk.Scrollbar(self.frame_text, orient='horizontal')
+        self.text_hs.pack(fill='x', side='bottom')
+
+        self.text_view = tk.Text(self.frame_text, height=20, wrap='none',
+                                 yscrollcommand=self.text_vs.set,
+                                 xscrollcommand=self.text_hs.set)
+        self.text_vs.config(command=self.text_view.yview)
+        self.text_hs.config(command=self.text_view.xview)
+        self.text_view.pack(fill='x', side='top')
+
+        self.protocol('WM_DELETE_WINDOW', self.window_close)
+
+        self.update()
+        self.min_sz = (self.frame.winfo_width(), self.frame.winfo_height())
+        self.minsize(self.min_sz[0], self.min_sz[1])
+
+        self.text_view.insert(tk.END, info)
+
+        self.grab_set()
+
+    def window_close(self):
+        print('Modal Clash Info window close')
+        self.destroy()
+
+
 def parse_svrs(data):
     print(f'original data: {data}')
     data = base64.b64decode(data)
@@ -333,6 +371,7 @@ def parse_svrs(data):
 
 g_default_socks_port = 10808
 g_default_http_port = 10809
+g_default_clash_port = 10810
 
 
 class ConfigObj:
@@ -452,6 +491,66 @@ class ConfigObj:
         return json.dumps(d, indent=2)
 
 
+class ClashConfigObj:
+
+    def __init__(self):
+        self.socks_port = g_default_socks_port
+        self.http_port = g_default_http_port
+        self.clash_port = g_default_clash_port
+        self.exclude_domain = []
+        self.exclude_node = []
+        self.lan_connect = False
+
+    def modify_yaml(self, yaml):
+        yaml = yaml.decode('UTF-8')
+        yaml_lst = yaml.split('\n')
+
+        find_rules = -1
+        find_proxy_groups = []
+
+        for i in range(len(yaml_lst)):
+            line = yaml_lst[i]
+            if line.startswith('log-level:'):
+                yaml_lst[i] = f'log-level: info'
+            elif line.startswith('socks-port:'):
+                yaml_lst[i] = f'socks-port: {self.socks_port}'
+            elif line.startswith('port:'):
+                yaml_lst[i] = f'port: {self.http_port}'
+            elif line.startswith('external-controller:'):
+                yaml_lst[i] = f'external-controller: 127.0.0.1:{self.clash_port}'
+            elif line.startswith('allow-lan:'):
+                yaml_lst[i] = 'allow-lan: ' + ('true' if self.lan_connect else 'false')
+            elif line.startswith('rules:') and find_rules < 0:
+                find_rules = i + 1
+
+        if find_rules < 0:
+            yaml_lst.append('rules:')
+            find_rules = len(yaml_lst)
+        for it in reversed(self.exclude_domain):
+            yaml_lst.insert(find_rules, f'  - DOMAIN-SUFFIX,{it},DIRECT')
+
+        for i in range(len(yaml_lst)):
+            line = yaml_lst[i]
+            if line.startswith('proxy-groups:'):
+                for j in range(i + 1, len(yaml_lst)):
+                    line = yaml_lst[j]
+                    if not line.startswith(' '):
+                        break
+                    line = line.strip()
+                    if not line.startswith('-'):
+                        continue
+                    for it in self.exclude_node:
+                        if line.find(it) >= 0:
+                            find_proxy_groups.append(j)
+                break
+
+        for i in reversed(find_proxy_groups):
+            del yaml_lst[i]
+
+        yaml = '\n'.join(yaml_lst)
+        return yaml.encode('UTF-8')
+
+
 class SubProcReader(threading.Thread):
 
     def __init__(self, fd, q):
@@ -474,8 +573,8 @@ class UIMain:
 
     def __init__(self):
         self.http_get = None
-        self.svr_cache = ''
-        self.svr_ret = ''
+        self.svr_cache = b''
+        self.svr_ret = b''
         self.svr_lst = []
         self.cur_svr = -1
         self.cur_popup = 0
@@ -485,6 +584,11 @@ class UIMain:
         self.http_get_geoipcp = None
         self.http_get_geosite = None
 
+        self.http_get_clash = None
+        self.svr_cache_clash = b''
+        self.svr_ret_clash = b''
+        self.clash_config_obj = ClashConfigObj()
+
         self.proc_dis_proxy = False
         self.process = None
         self.out_q = None
@@ -492,31 +596,41 @@ class UIMain:
         self.out_t = None
         self.err_t = None
 
+        user_dns = ''
         user_url = ''
         user_path = ''
-        user_dns = ''
         socks_port = str(g_default_socks_port)
         http_port = str(g_default_http_port)
         user_exclude = ''
         global_proxy = False
         lan_connect = False
         ad_allow = False
+        user_clash_url = ''
+        user_clash_path = ''
+        clash_port = str(g_default_clash_port)
+        user_clash_exclude = ''
+
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         if os.path.exists(user_file):
             f_user = open(user_file, 'rb')
             data = f_user.read().decode('UTF-8')
             f_user.close()
             data = json.loads(data)
+            user_dns = data.get('user_dns', '')
             user_url = data.get('user_url', '')
             user_path = data.get('user_path', '')
-            user_dns = data.get('user_dns', '')
             socks_port = str(data.get('socks_port', g_default_socks_port))
             http_port = str(data.get('http_port', g_default_http_port))
             user_exclude = data.get('user_exclude', '')
             global_proxy = bool(data.get('global_proxy', False))
             lan_connect = bool(data.get('lan_connect', False))
             ad_allow = bool(data.get('ad_allow', False))
+            user_clash_url = data.get('user_clash_url', '')
+            user_clash_path = data.get('user_clash_path', '')
+            clash_port = str(data.get('clash_port', g_default_clash_port))
+            user_clash_exclude = data.get('user_clash_exclude', '')
             self.svr_cache = data.get('svr_cache', '').encode('UTF-8')
+            self.svr_cache_clash = data.get('svr_cache_clash', '').encode('UTF-8')
 
         self.root = tk.Tk()
         self.root.title('hello python')
@@ -533,7 +647,7 @@ class UIMain:
         self.table_hs = ttk.Scrollbar(self.frame_table, orient='horizontal')
         self.table_hs.pack(fill='x', side='bottom')
 
-        self.table = ttk.Treeview(self.frame_table, selectmode='browse',
+        self.table = ttk.Treeview(self.frame_table, selectmode='browse', height=8,
                                   yscrollcommand=self.table_vs.set,
                                   xscrollcommand=self.table_hs.set)
         self.table_vs.config(command=self.table.yview)
@@ -543,36 +657,36 @@ class UIMain:
         self.frame0 = tk.Frame(self.frame)
         self.frame0.pack(fill='x', side='top')
 
-        self.label_url = tk.Label(self.frame0, text='URL:')
-        self.label_url.pack(side='left', padx=5, pady=2)
-
-        self.editor_url = tk.Entry(self.frame0)
-        self.editor_url.pack(fill='x', side='left', expand=True, padx=5, pady=2)
-        if len(user_url) > 0:
-            self.editor_url.insert(0, user_url)
-
-        self.btn_update_geo = tk.Button(self.frame0, text='Update Geography',
-                                        command=self.click_update_geography)
-        self.btn_update_geo.pack(side='right', padx=5, pady=2)
-
-        self.btn_update_sub = tk.Button(self.frame0, text='Update Subscription',
-                                        command=self.click_update_subscription)
-        self.btn_update_sub.pack(side='right', padx=5, pady=2)
-
-        self.frame1 = tk.Frame(self.frame)
-        self.frame1.pack(fill='x', side='top')
-
-        self.label_dns = tk.Label(self.frame1, text='DNS:')
+        self.label_dns = tk.Label(self.frame0, text='DNS:')
         self.label_dns.pack(side='left', padx=5, pady=2)
 
-        self.editor_dns = tk.Entry(self.frame1)
+        self.editor_dns = tk.Entry(self.frame0)
         self.editor_dns.pack(fill='x', side='left', expand=True, padx=5, pady=2)
         if len(user_dns) > 0:
             self.editor_dns.insert(0, user_dns)
 
-        self.btn_update_dns = tk.Button(self.frame1, text='Update DNS',
+        self.btn_update_dns = tk.Button(self.frame0, text='Update DNS',
                                         command=self.click_update_dns)
         self.btn_update_dns.pack(side='right', padx=5, pady=2)
+
+        self.frame1 = tk.Frame(self.frame)
+        self.frame1.pack(fill='x', side='top')
+
+        self.label_url = tk.Label(self.frame1, text='V2Ray URL:')
+        self.label_url.pack(side='left', padx=5, pady=2)
+
+        self.editor_url = tk.Entry(self.frame1)
+        self.editor_url.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_url) > 0:
+            self.editor_url.insert(0, user_url)
+
+        self.btn_update_geo = tk.Button(self.frame1, text='Update Geography',
+                                        command=self.click_update_geography)
+        self.btn_update_geo.pack(side='right', padx=5, pady=2)
+
+        self.btn_update_sub = tk.Button(self.frame1, text='Update Subscription',
+                                        command=self.click_update_subscription)
+        self.btn_update_sub.pack(side='right', padx=5, pady=2)
 
         self.frame2 = tk.Frame(self.frame)
         self.frame2.pack(fill='x', side='top')
@@ -640,6 +754,68 @@ class UIMain:
             self.btn_uwp_loopback = tk.Button(self.frame4, text='UWP Loopback',
                                               command=self.click_uwp_loopback)
             self.btn_uwp_loopback.pack(side='left', padx=5, pady=2)
+
+        self.frame5 = tk.Frame(self.frame)
+        self.frame5.pack(fill='x', side='top')
+
+        self.label_crash_url = tk.Label(self.frame5, text='Clash URL:')
+        self.label_crash_url.pack(side='left', padx=5, pady=2)
+
+        self.editor_clash_url = tk.Entry(self.frame5)
+        self.editor_clash_url.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_clash_url) > 0:
+            self.editor_clash_url.insert(0, user_clash_url)
+
+        self.btn_clash_show_sub = tk.Button(self.frame5, text='Show Clash Subs',
+                                            command=self.click_show_clash_subscription)
+        self.btn_clash_show_sub.pack(side='right', padx=5, pady=2)
+
+        self.btn_clash_update_sub = tk.Button(self.frame5, text='Update Clash Subs',
+                                              command=self.click_update_clash_subscription)
+        self.btn_clash_update_sub.pack(side='right', padx=5, pady=2)
+
+        self.frame6 = tk.Frame(self.frame)
+        self.frame6.pack(fill='x', side='top')
+
+        self.label_clash_path = tk.Label(self.frame6, text='Clash PATH:')
+        self.label_clash_path.pack(side='left', padx=5, pady=2)
+
+        self.editor_clash_path = tk.Entry(self.frame6)
+        self.editor_clash_path.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_clash_path) > 0:
+            self.editor_clash_path.insert(0, user_clash_path)
+
+        self.editor_clash_port = tk.Entry(self.frame6, width=8)
+        self.editor_clash_port.pack(side='right', padx=(0, 5), pady=2)
+        self.editor_clash_port.insert(0, clash_port)
+
+        self.label_clash_port = tk.Label(self.frame6, text='clash-port:')
+        self.label_clash_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.frame7 = tk.Frame(self.frame)
+        self.frame7.pack(fill='x', side='top')
+
+        self.label_clash_exclude = tk.Label(self.frame7, text='Exclude Node:')
+        self.label_clash_exclude.pack(side='left', padx=5, pady=2)
+
+        self.editor_clash_exclude = tk.Entry(self.frame7)
+        self.editor_clash_exclude.pack(fill='x', side='left', expand=True, padx=5, pady=2)
+        if len(user_clash_exclude) > 0:
+            self.editor_clash_exclude.insert(0, user_clash_exclude)
+
+        self.btn_clash_mmdb = tk.Button(self.frame7, text='Update MMDB',
+                                        command=self.click_clash_mmdb)
+        self.btn_clash_mmdb.pack(side='right', padx=5, pady=2)
+
+        self.btn_clash_start = tk.Button(self.frame7, text='Clash Start',
+                                         command=self.click_clash_start)
+        self.btn_clash_start.pack(side='right', padx=5, pady=2)
+
+        self.btn_clash_stop = tk.Button(self.frame7, text='Clash Stop',
+                                        command=self.click_clash_stop)
+        self.btn_clash_stop.pack(side='right', padx=5, pady=2)
+
+        self.btn_clash_stop.pack_forget()
 
         self.frame_out = tk.Frame(self.frame)
         self.frame_out.pack(fill='x', side='top', padx=5, pady=5)
@@ -721,11 +897,15 @@ class UIMain:
             self.svr_lst = parse_svrs(self.svr_ret)
             self.update_svr_lst_to_ui()
 
+        if len(self.svr_cache_clash) > 0:
+            print(f'use subscription cache clash: {len(self.svr_cache_clash)}')
+            self.svr_ret_clash = base64.b64decode(self.svr_cache_clash)
+
         self.start_v2ray(True)
 
     def root_close(self):
         print('root close')
-        self.stop_v2ray()
+        self.stop_subproc()
         self.root.destroy()
 
     def click_update_subscription(self):
@@ -810,7 +990,7 @@ class UIMain:
 
         if need_rewrite:
             print('update geography restart')
-            self.stop_v2ray()
+            self.stop_subproc()
 
             if self.http_get_geoip and self.http_get_geoip.need_rewrite:
                 f = open(self.http_get_geoip.path, 'wb')
@@ -847,6 +1027,57 @@ class UIMain:
 
     def click_uwp_loopback(self):
         ModalUWPLoopback(self.root)
+
+    def click_update_clash_subscription(self):
+        if self.http_get_clash:
+            print('clash subscriptions are currently being updated')
+            return
+
+        url = self.editor_clash_url.get()
+        if len(url) <= 0:
+            ModalInfo(self.root, 'update clash subscription', 'url is empty')
+            return
+
+        self.start_v2ray(True)
+
+        print(f'start update clash subscription: {url}')
+        self.http_get_clash = ChildProcHttpGet(url, {})
+        self.http_get_clash.start()
+        self.root.after(100, func=self.check_update_clash_subscription)
+
+    def check_update_clash_subscription(self):
+        if self.http_get_clash and self.http_get_clash.is_alive():
+            self.root.after(100, func=self.check_update_clash_subscription)
+            print('clash subscription wait...')
+            return
+
+        if self.http_get_clash:
+            print(f'update clash subscription returns: {len(self.http_get_clash.ret)}')
+            print(f'update clash subscription cache: {len(self.svr_cache_clash)}')
+            self.svr_ret_clash = self.http_get_clash.ret if len(self.http_get_clash.ret) > 0 \
+                else base64.b64decode(self.svr_cache_clash)
+            self.http_get_clash = None
+            self.click_show_clash_subscription()
+
+    def click_show_clash_subscription(self):
+        ClashShowInfo(self.root, self.svr_ret_clash.decode('UTF-8'))
+
+    def click_clash_mmdb(self):
+        pass
+
+    def click_clash_start(self):
+        self.start_clash()
+        if not self.process:
+            return
+
+        self.btn_clash_stop.pack(side='right', padx=5, pady=2)
+        self.btn_clash_start.pack_forget()
+
+    def click_clash_stop(self):
+        self.start_v2ray(True)
+
+        self.btn_clash_start.pack(side='right', padx=5, pady=2)
+        self.btn_clash_stop.pack_forget()
 
     def update_svr_lst_to_ui(self):
         self.table.delete(*self.table.get_children())
@@ -950,7 +1181,7 @@ class UIMain:
     def start_v2ray(self, disable=False):
         print(f'start v2ray, disable: {disable}')
 
-        self.stop_v2ray()
+        self.stop_subproc()
 
         path = self.editor_path.get()
         if len(path) <= 0:
@@ -1020,10 +1251,18 @@ class UIMain:
 
         self.subproc_data()
 
+        ori_data = {}
+        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
+        if os.path.exists(user_file):
+            f_user = open(user_file, 'rb')
+            data = f_user.read().decode('UTF-8')
+            f_user.close()
+            ori_data = json.loads(data)
+
         self.svr_cache = self.svr_ret
-        data = {'user_url': self.editor_url.get(),
+        data = {'user_dns': self.editor_dns.get(),
+                'user_url': self.editor_url.get(),
                 'user_path': self.editor_path.get(),
-                'user_dns': self.editor_dns.get(),
                 'socks_port': self.config_obj.socks_port,
                 'http_port': self.config_obj.http_port,
                 'user_exclude': self.editor_exclude.get(),
@@ -1031,14 +1270,120 @@ class UIMain:
                 'lan_connect': self.config_obj.lan_connect,
                 'ad_allow': self.config_obj.ad_allow,
                 'svr_cache': self.svr_cache.decode('UTF-8')}
-        data = json.dumps(data, indent=2)
+        ori_data.update(data)
+        data = json.dumps(ori_data, indent=2)
         user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
         f_user = open(user_file, 'wb')
         f_user.write(data.encode('UTF-8'))
         f_user.close()
 
-    def stop_v2ray(self):
-        print('stop v2ray')
+    def start_clash(self):
+        print('start clash')
+
+        self.stop_subproc()
+
+        path = self.editor_clash_path.get()
+        if len(path) <= 0:
+            ModalInfo(self.root, 'start clash', 'path is empty')
+            return
+
+        socks_port = self.editor_socks_port.get()
+        if socks_port.isdigit():
+            self.clash_config_obj.socks_port = int(socks_port)
+        else:
+            ModalInfo(self.root, 'start clash', 'socks port error')
+            return
+
+        http_port = self.editor_http_port.get()
+        if http_port.isdigit():
+            self.clash_config_obj.http_port = int(http_port)
+        else:
+            ModalInfo(self.root, 'start clash', 'http port error')
+            return
+
+        clash_port = self.editor_clash_port.get()
+        if clash_port.isdigit():
+            self.clash_config_obj.clash_port = int(clash_port)
+        else:
+            ModalInfo(self.root, 'start clash', 'clash port error')
+            return
+
+        exclude_domain = self.editor_exclude.get().split(',')
+        exclude_domain = [it.strip() for it in exclude_domain]
+        self.clash_config_obj.exclude_domain = exclude_domain
+
+        exclude_node = self.editor_clash_exclude.get().split(',')
+        exclude_node = [it.strip() for it in exclude_node]
+        self.clash_config_obj.exclude_node = exclude_node
+
+        self.clash_config_obj.lan_connect = (self.check_lan_var.get() == 1)
+
+        print(f'socks_port: {self.clash_config_obj.socks_port}, '
+              f'http_port: {self.clash_config_obj.http_port}, '
+              f'clash_port: {self.clash_config_obj.clash_port}, '
+              f'exclude_node: {self.clash_config_obj.exclude_node}, '
+              f'lan_connect: {self.clash_config_obj.lan_connect}')
+
+        mmdb_path = os.path.join(path, 'Country.mmdb')
+        if not os.path.exists(mmdb_path):
+            ModalInfo(self.root, 'start clash', 'mmdb can not found')
+            return
+
+        exe_path = os.path.join(path, 'mihomo.exe')
+        if not os.path.exists(exe_path):
+            exe_path = os.path.join(path, 'mihomo')
+        if not os.path.exists(exe_path):
+            ModalInfo(self.root, 'start clash', 'clash can not found')
+            return
+
+        config_path = os.path.join(path, 'config.yaml')
+        cur_yaml = self.clash_config_obj.modify_yaml(self.svr_ret_clash)
+        f = open(config_path, 'wb')
+        f.write(cur_yaml)
+        f.close()
+
+        self.proc_dis_proxy = False
+        self.process = subprocess.Popen([exe_path, '-d', '.'], cwd=path,
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.out_q = queue.Queue()
+        self.err_q = queue.Queue()
+
+        self.out_t = SubProcReader(self.process.stdout, self.out_q)
+        self.out_t.start()
+
+        self.err_t = SubProcReader(self.process.stderr, self.err_q)
+        self.err_t.start()
+
+        self.subproc_data()
+
+        ori_data = {}
+        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
+        if os.path.exists(user_file):
+            f_user = open(user_file, 'rb')
+            data = f_user.read().decode('UTF-8')
+            f_user.close()
+            ori_data = json.loads(data)
+
+        self.svr_cache_clash = base64.b64encode(self.svr_ret_clash)
+        data = {'user_dns': self.editor_dns.get(),
+                'socks_port': self.clash_config_obj.socks_port,
+                'http_port': self.clash_config_obj.http_port,
+                'user_exclude': self.editor_exclude.get(),
+                'lan_connect': self.clash_config_obj.lan_connect,
+                'user_clash_url': self.editor_clash_url.get(),
+                'user_clash_path': self.editor_clash_path.get(),
+                'clash_port': self.clash_config_obj.clash_port,
+                'user_clash_exclude': self.editor_clash_exclude.get(),
+                'svr_cache_clash': self.svr_cache_clash.decode('UTF-8')}
+        ori_data.update(data)
+        data = json.dumps(ori_data, indent=2)
+        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
+        f_user = open(user_file, 'wb')
+        f_user.write(data.encode('UTF-8'))
+        f_user.close()
+
+    def stop_subproc(self):
+        print('stop sub proc')
 
         if self.process:
             self.process.kill()
@@ -1054,7 +1399,7 @@ class UIMain:
             self.err_t.join()
             self.err_t = None
 
-            print('stop v2ray finish')
+            print('stop proc finish')
 
 
 if __name__ == '__main__':
