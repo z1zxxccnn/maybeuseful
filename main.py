@@ -589,6 +589,8 @@ class UIMain:
         self.svr_ret_clash = b''
         self.clash_config_obj = ClashConfigObj()
 
+        self.http_get_mmdb = None
+
         self.proc_dis_proxy = False
         self.process = None
         self.out_q = None
@@ -944,7 +946,7 @@ class UIMain:
             self.update_svr_lst_to_ui()
 
     def click_update_geography(self):
-        if self.http_get_geoip or self.http_get_geosite:
+        if self.http_get_geoip or self.http_get_geoipcp or self.http_get_geosite:
             print('geography are currently being updated')
             return
 
@@ -1063,7 +1065,47 @@ class UIMain:
         ClashShowInfo(self.root, self.svr_ret_clash.decode('UTF-8'))
 
     def click_clash_mmdb(self):
-        pass
+        if self.http_get_mmdb:
+            print('mmdb are currently being updated')
+            return
+
+        if not ((self.process is not None) and (not self.proc_dis_proxy)):
+            ModalInfo(self.root, 'update mmdb', 'proxy is not running')
+            return
+
+        print('start update mmdb')
+
+        path = os.path.join(self.editor_clash_path.get(), 'Country.mmdb')
+        url = 'https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb'
+        self.http_get_mmdb = GeoInfoUnit(path, url, self.config_obj.http_port)
+
+        self.http_get_mmdb.start()
+        self.root.after(100, func=self.check_update_mmdb)
+
+    def check_update_mmdb(self):
+        if self.http_get_mmdb and self.http_get_mmdb.is_alive():
+            self.root.after(100, func=self.check_update_mmdb)
+            print('mmdb wait...')
+            return
+
+        need_restart = (self.process is not None) and (not self.proc_dis_proxy)
+        need_rewrite = False
+        if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
+            need_rewrite = True
+
+        if need_rewrite:
+            print('update mmdb restart')
+            self.stop_subproc()
+
+            if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
+                f = open(self.http_get_mmdb.path, 'wb')
+                f.write(self.http_get_mmdb.ret)
+                f.close()
+
+            if need_restart:
+                self.start_clash()
+
+        self.http_get_mmdb = None
 
     def click_clash_start(self):
         self.start_clash()
@@ -1321,6 +1363,7 @@ class UIMain:
         print(f'socks_port: {self.clash_config_obj.socks_port}, '
               f'http_port: {self.clash_config_obj.http_port}, '
               f'clash_port: {self.clash_config_obj.clash_port}, '
+              f'exclude_domain: {self.clash_config_obj.exclude_domain}, '
               f'exclude_node: {self.clash_config_obj.exclude_node}, '
               f'lan_connect: {self.clash_config_obj.lan_connect}')
 
