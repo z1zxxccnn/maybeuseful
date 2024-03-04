@@ -1098,6 +1098,10 @@ class UIMain:
             self.stop_subproc()
 
             if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
+                old_path = self.http_get_mmdb.path + '.old';
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                os.rename(self.http_get_mmdb.path, old_path)
                 f = open(self.http_get_mmdb.path, 'wb')
                 f.write(self.http_get_mmdb.ret)
                 f.close()
