@@ -48,10 +48,13 @@ class ModalInfo(tk.Toplevel):
 
 class ChildProcHttpGet(threading.Thread):
 
-    def __init__(self, url, proxy):
+    def __init__(self, url, http_port=None):
         threading.Thread.__init__(self)
         self.url = url
-        self.proxy = proxy
+        if http_port is not None:
+            self.proxy = {'http': f'http://127.0.0.1:{http_port}', 'https': f'http://127.0.0.1:{http_port}'}
+        else:
+            self.proxy = {}
         self.ret = b''
 
     def run(self):
@@ -216,7 +219,6 @@ class ModalUWPLoopback(tk.Toplevel):
         self.min_sz = (self.frame.winfo_width(), self.frame.winfo_height())
         self.minsize(self.min_sz[0], self.min_sz[1])
 
-        self.pkg_lst = []
         self.cur_popup = 0
 
         self.query = UWPLoopbackQuery()
@@ -592,6 +594,7 @@ class UIMain:
         self.http_get_mmdb = None
 
         self.proc_dis_proxy = False
+        self.proc_http_port = None
         self.process = None
         self.out_q = None
         self.err_q = None
@@ -920,14 +923,9 @@ class UIMain:
             ModalInfo(self.root, 'update subscription', 'url is empty')
             return
 
-        self.start_v2ray(True)
-        self.svr_lst = []
-        self.cur_svr = -1
-        self.cur_popup = 0
-        self.update_svr_lst_to_ui()
-
         print(f'start update subscription: {url}')
-        self.http_get = ChildProcHttpGet(url, {})
+        print(f'start update subscription, use http proxy: {self.proc_http_port}')
+        self.http_get = ChildProcHttpGet(url, self.proc_http_port)
         self.http_get.start()
         self.root.after(100, func=self.check_update_subscription)
 
@@ -942,8 +940,11 @@ class UIMain:
             print(f'update subscription cache: {self.svr_cache}')
             self.svr_ret = self.http_get.ret if len(self.http_get.ret) > 0 else self.svr_cache
             self.svr_lst = parse_svrs(self.svr_ret)
-            self.http_get = None
+            if self.cur_svr != -1:
+                self.cur_svr = -1
+                self.start_v2ray(True)
             self.update_svr_lst_to_ui()
+            self.http_get = None
 
     def click_update_geography(self):
         if self.http_get_geoip or self.http_get_geoipcp or self.http_get_geosite:
@@ -981,7 +982,6 @@ class UIMain:
             print('geography wait...')
             return
 
-        need_restart = (self.process is not None) and (not self.proc_dis_proxy)
         need_rewrite = False
         if self.http_get_geoip and self.http_get_geoip.need_rewrite:
             need_rewrite = True
@@ -991,26 +991,34 @@ class UIMain:
             need_rewrite = True
 
         if need_rewrite:
-            print('update geography restart')
-            self.stop_subproc()
+            print('update geography rewrite')
 
             if self.http_get_geoip and self.http_get_geoip.need_rewrite:
+                old_path = self.http_get_geoip.path + '.old'
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                os.rename(self.http_get_geoip.path, old_path)
                 f = open(self.http_get_geoip.path, 'wb')
                 f.write(self.http_get_geoip.ret)
                 f.close()
 
             if self.http_get_geoipcp and self.http_get_geoipcp.need_rewrite:
+                old_path = self.http_get_geoipcp.path + '.old'
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                os.rename(self.http_get_geoipcp.path, old_path)
                 f = open(self.http_get_geoipcp.path, 'wb')
                 f.write(self.http_get_geoipcp.ret)
                 f.close()
 
             if self.http_get_geosite and self.http_get_geosite.need_rewrite:
+                old_path = self.http_get_geosite.path + '.old'
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                os.rename(self.http_get_geosite.path, old_path)
                 f = open(self.http_get_geosite.path, 'wb')
                 f.write(self.http_get_geosite.ret)
                 f.close()
-
-            if need_restart:
-                self.start_v2ray()
 
         self.http_get_geoip = None
         self.http_get_geoipcp = None
@@ -1040,10 +1048,9 @@ class UIMain:
             ModalInfo(self.root, 'update clash subscription', 'url is empty')
             return
 
-        self.start_v2ray(True)
-
         print(f'start update clash subscription: {url}')
-        self.http_get_clash = ChildProcHttpGet(url, {})
+        print(f'start update clash subscription, use http proxy: {self.proc_http_port}')
+        self.http_get_clash = ChildProcHttpGet(url, self.proc_http_port)
         self.http_get_clash.start()
         self.root.after(100, func=self.check_update_clash_subscription)
 
@@ -1088,17 +1095,15 @@ class UIMain:
             print('mmdb wait...')
             return
 
-        need_restart = (self.process is not None) and (not self.proc_dis_proxy)
         need_rewrite = False
         if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
             need_rewrite = True
 
         if need_rewrite:
-            print('update mmdb restart')
-            self.stop_subproc()
+            print('update mmdb rewrite')
 
             if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
-                old_path = self.http_get_mmdb.path + '.old';
+                old_path = self.http_get_mmdb.path + '.old'
                 if os.path.exists(old_path):
                     os.remove(old_path)
                 os.rename(self.http_get_mmdb.path, old_path)
@@ -1106,12 +1111,13 @@ class UIMain:
                 f.write(self.http_get_mmdb.ret)
                 f.close()
 
-            if need_restart:
-                self.start_clash()
-
         self.http_get_mmdb = None
 
     def click_clash_start(self):
+        if self.cur_svr != -1:
+            self.cur_svr = -1
+            self.update_svr_lst_to_ui()
+
         self.start_clash()
         if not self.process:
             return
@@ -1162,6 +1168,9 @@ class UIMain:
     def table_popup_select(self):
         if self.cur_popup < 0 or self.cur_popup >= len(self.svr_lst):
             return
+
+        self.btn_clash_start.pack(side='right', padx=5, pady=2)
+        self.btn_clash_stop.pack_forget()
 
         self.cur_svr = self.cur_popup
         self.start_v2ray()
@@ -1285,6 +1294,7 @@ class UIMain:
         f.close()
 
         self.proc_dis_proxy = disable
+        self.proc_http_port = self.config_obj.http_port
         self.process = subprocess.Popen([exe_path, ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.out_q = queue.Queue()
         self.err_q = queue.Queue()
@@ -1390,6 +1400,7 @@ class UIMain:
         f.close()
 
         self.proc_dis_proxy = False
+        self.proc_http_port = self.clash_config_obj.http_port
         self.process = subprocess.Popen([exe_path, '-d', '.'], cwd=path,
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.out_q = queue.Queue()
@@ -1432,6 +1443,7 @@ class UIMain:
     def stop_subproc(self):
         print('stop sub proc')
 
+        self.proc_http_port = None
         if self.process:
             self.process.kill()
             self.process = None
