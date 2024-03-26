@@ -446,12 +446,17 @@ class ConfigObj:
         rule4 = {'type': 'field', 'outboundTag': 'direct', 'enabled': True,
                  'ip': ['geoip:private', 'geoip:cn']}
         rule5 = {'type': 'field', 'port': '0-65535', 'outboundTag': 'proxy', 'enabled': True}
+
+        rules = [rule0, ]
+        if len(self.exclude_domain) > 0:
+            rules.append(rule1)
+        if not self.ad_allow:
+            rules.append(rule2)
         if self.global_proxy:
-            routing['rules'] = [rule0, rule5]
-        elif self.ad_allow:
-            routing['rules'] = [rule0, rule1, rule3, rule4, rule5]
+            rules.append(rule5)
         else:
-            routing['rules'] = [rule0, rule1, rule2, rule3, rule4, rule5]
+            rules += [rule3, rule4, rule5]
+        routing['rules'] = rules
 
         d['routing'] = routing
 
@@ -1257,8 +1262,12 @@ class UIMain:
             ModalInfo(self.root, 'start v2ray', 'http port error')
             return
 
-        exclude_domain = self.editor_exclude.get().split(',')
-        exclude_domain = ['domain:' + it.strip() for it in exclude_domain]
+        exclude_domain = self.editor_exclude.get()
+        if len(exclude_domain) > 0:
+            exclude_domain = exclude_domain.split(',')
+            exclude_domain = ['domain:' + it.strip() for it in exclude_domain]
+        else:
+            exclude_domain = []
         self.config_obj.exclude_domain = exclude_domain
 
         self.config_obj.global_proxy = (self.check_global_var.get() == 1)
@@ -1364,12 +1373,20 @@ class UIMain:
             ModalInfo(self.root, 'start clash', 'clash port error')
             return
 
-        exclude_domain = self.editor_exclude.get().split(',')
-        exclude_domain = [it.strip() for it in exclude_domain]
+        exclude_domain = self.editor_exclude.get()
+        if len(exclude_domain) > 0:
+            exclude_domain = exclude_domain.split(',')
+            exclude_domain = [it.strip() for it in exclude_domain]
+        else:
+            exclude_domain = []
         self.clash_config_obj.exclude_domain = exclude_domain
 
-        exclude_node = self.editor_clash_exclude.get().split(',')
-        exclude_node = [it.strip() for it in exclude_node]
+        exclude_node = self.editor_clash_exclude.get()
+        if len(exclude_node) > 0:
+            exclude_node = exclude_node.split(',')
+            exclude_node = [it.strip() for it in exclude_node]
+        else:
+            exclude_node = []
         self.clash_config_obj.exclude_node = exclude_node
 
         self.clash_config_obj.lan_connect = (self.check_lan_var.get() == 1)
