@@ -1002,7 +1002,8 @@ class UIMain:
                 old_path = self.http_get_geoip.path + '.old'
                 if os.path.exists(old_path):
                     os.remove(old_path)
-                os.rename(self.http_get_geoip.path, old_path)
+                if os.path.exists(self.http_get_geoip.path):
+                    os.rename(self.http_get_geoip.path, old_path)
                 f = open(self.http_get_geoip.path, 'wb')
                 f.write(self.http_get_geoip.ret)
                 f.close()
@@ -1011,7 +1012,8 @@ class UIMain:
                 old_path = self.http_get_geoipcp.path + '.old'
                 if os.path.exists(old_path):
                     os.remove(old_path)
-                os.rename(self.http_get_geoipcp.path, old_path)
+                if os.path.exists(self.http_get_geoipcp.path):
+                    os.rename(self.http_get_geoipcp.path, old_path)
                 f = open(self.http_get_geoipcp.path, 'wb')
                 f.write(self.http_get_geoipcp.ret)
                 f.close()
@@ -1020,7 +1022,8 @@ class UIMain:
                 old_path = self.http_get_geosite.path + '.old'
                 if os.path.exists(old_path):
                     os.remove(old_path)
-                os.rename(self.http_get_geosite.path, old_path)
+                if os.path.exists(self.http_get_geosite.path):
+                    os.rename(self.http_get_geosite.path, old_path)
                 f = open(self.http_get_geosite.path, 'wb')
                 f.write(self.http_get_geosite.ret)
                 f.close()
@@ -1111,7 +1114,8 @@ class UIMain:
                 old_path = self.http_get_mmdb.path + '.old'
                 if os.path.exists(old_path):
                     os.remove(old_path)
-                os.rename(self.http_get_mmdb.path, old_path)
+                if os.path.exists(self.http_get_mmdb.path):
+                    os.rename(self.http_get_mmdb.path, old_path)
                 f = open(self.http_get_mmdb.path, 'wb')
                 f.write(self.http_get_mmdb.ret)
                 f.close()
