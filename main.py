@@ -71,11 +71,14 @@ class ChildProcHttpGet(threading.Thread):
 
 class GeoInfoUnit(threading.Thread):
 
-    def __init__(self, path, url, http_port):
+    def __init__(self, path, url, http_port=None):
         threading.Thread.__init__(self)
         self.path = path
         self.url = url
-        self.proxy = {'http': f'http://127.0.0.1:{http_port}', 'https': f'http://127.0.0.1:{http_port}'}
+        if http_port is not None:
+            self.proxy = {'http': f'http://127.0.0.1:{http_port}', 'https': f'http://127.0.0.1:{http_port}'}
+        else:
+            self.proxy = {}
         self.ret = b''
         self.need_rewrite = False
 
@@ -960,19 +963,19 @@ class UIMain:
             ModalInfo(self.root, 'update geography', 'proxy is not running')
             return
 
-        print('start update geography')
+        print(f'start update geography, use http proxy: {self.proc_http_port}')
 
         path = os.path.join(self.editor_path.get(), 'geoip.dat')
         url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip.dat'
-        self.http_get_geoip = GeoInfoUnit(path, url, self.config_obj.http_port)
+        self.http_get_geoip = GeoInfoUnit(path, url, self.proc_http_port)
 
         path = os.path.join(self.editor_path.get(), 'geoip-only-cn-private.dat')
         url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip-only-cn-private.dat'
-        self.http_get_geoipcp = GeoInfoUnit(path, url, self.config_obj.http_port)
+        self.http_get_geoipcp = GeoInfoUnit(path, url, self.proc_http_port)
 
         path = os.path.join(self.editor_path.get(), 'geosite.dat')
         url = 'https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat'
-        self.http_get_geosite = GeoInfoUnit(path, url, self.config_obj.http_port)
+        self.http_get_geosite = GeoInfoUnit(path, url, self.proc_http_port)
 
         self.http_get_geoip.start()
         self.http_get_geoipcp.start()
@@ -1088,11 +1091,11 @@ class UIMain:
             ModalInfo(self.root, 'update mmdb', 'proxy is not running')
             return
 
-        print('start update mmdb')
+        print(f'start update mmdb, use http proxy: {self.proc_http_port}')
 
         path = os.path.join(self.editor_clash_path.get(), 'Country.mmdb')
         url = 'https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb'
-        self.http_get_mmdb = GeoInfoUnit(path, url, self.config_obj.http_port)
+        self.http_get_mmdb = GeoInfoUnit(path, url, self.proc_http_port)
 
         self.http_get_mmdb.start()
         self.root.after(100, func=self.check_update_mmdb)
