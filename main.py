@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 import urllib.request
 import socket
 import base64
@@ -48,20 +48,22 @@ class ModalInfo(tk.Toplevel):
 
 class ChildProcHttpGet(threading.Thread):
 
-    def __init__(self, url, http_port=None):
+    def __init__(self, url, http_port=None, headers=None):
         threading.Thread.__init__(self)
         self.url = url
         if http_port is not None:
             self.proxy = {'http': f'http://127.0.0.1:{http_port}', 'https': f'http://127.0.0.1:{http_port}'}
         else:
             self.proxy = {}
+        self.headers = headers
         self.ret = b''
 
     def run(self):
         try:
             print(f'http get system proxy: {urllib.request.getproxies()}')
             print(f'http get current proxy: {self.proxy}')
-            req = urllib.request.Request(self.url)
+            req = urllib.request.Request(self.url) if not self.headers else urllib.request.Request(self.url,
+                                                                                                   headers=self.headers)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler(self.proxy))
             response = opener.open(req, timeout=30)
             self.ret = response.read()
@@ -244,7 +246,7 @@ class ModalUWPLoopback(tk.Toplevel):
         disable = '☐'
         for it in self.query.ret_lst:
             val = (it[1],)
-            self.table.insert(parent='', index='end', iid=cur_iid,
+            self.table.insert(parent='', index='end', iid=str(cur_iid),
                               text=(enable if it[0] else disable), values=val)
             cur_iid += 1
 
@@ -640,6 +642,7 @@ class UIMain:
             ad_allow = bool(data.get('ad_allow', False))
             user_clash_url = data.get('user_clash_url', '')
             user_clash_path = data.get('user_clash_path', '')
+            clash_ua = data.get('clash_ua', '')
             clash_port = str(data.get('clash_port', g_default_clash_port))
             user_clash_exclude = data.get('user_clash_exclude', '')
             self.svr_cache = data.get('svr_cache', '').encode('UTF-8')
@@ -787,6 +790,10 @@ class UIMain:
                                               command=self.click_update_clash_subscription)
         self.btn_clash_update_sub.pack(side='right', padx=5, pady=2)
 
+        self.btn_open_yaml_file = tk.Button(self.frame5, text='Open YAML File',
+                                            command=self.click_open_yaml_file)
+        self.btn_open_yaml_file.pack(side='right', padx=5, pady=2)
+
         self.frame6 = tk.Frame(self.frame)
         self.frame6.pack(fill='x', side='top')
 
@@ -803,6 +810,14 @@ class UIMain:
         self.editor_clash_port.insert(0, clash_port)
 
         self.label_clash_port = tk.Label(self.frame6, text='clash-port:')
+        self.label_clash_port.pack(side='right', padx=(5, 0), pady=2)
+
+        self.editor_clash_ua = tk.Entry(self.frame6, width=8)
+        self.editor_clash_ua.pack(side='right', padx=(0, 5), pady=2)
+        if len(clash_ua) > 0:
+            self.editor_clash_ua.insert(0, clash_ua)
+
+        self.label_clash_port = tk.Label(self.frame6, text='clash-ua:')
         self.label_clash_port.pack(side='right', padx=(5, 0), pady=2)
 
         self.frame7 = tk.Frame(self.frame)
@@ -946,6 +961,7 @@ class UIMain:
         if self.http_get:
             print(f'update subscription returns: {self.http_get.ret}')
             print(f'update subscription cache: {self.svr_cache}')
+            fetch_failed = len(self.http_get.ret)
             self.svr_ret = self.http_get.ret if len(self.http_get.ret) > 0 else self.svr_cache
             self.svr_lst = parse_svrs(self.svr_ret)
             if self.cur_svr != -1:
@@ -953,6 +969,8 @@ class UIMain:
                 self.start_v2ray(True)
             self.update_svr_lst_to_ui()
             self.http_get = None
+            if fetch_failed:
+                ModalInfo(self.root, 'update subscription', 'fetch failed')
 
     def click_update_geography(self):
         if self.http_get_geoip or self.http_get_geoipcp or self.http_get_geosite:
@@ -1049,6 +1067,26 @@ class UIMain:
     def click_uwp_loopback(self):
         ModalUWPLoopback(self.root)
 
+    def click_open_yaml_file(self):
+        if self.http_get_clash:
+            print('clash subscriptions are currently being updated')
+            return
+
+        yaml_file_path = filedialog.askopenfilename(
+            parent=self.root,
+            title='Choose YAML File',
+            initialdir='.',
+            filetypes=[("YAML File", "*.yaml")]
+        )
+        if not yaml_file_path:
+            print('cancel open yaml file')
+            return
+
+        f = open(yaml_file_path, 'rb')
+        self.svr_ret_clash = f.read()
+        f.close()
+        self.click_show_clash_subscription()
+
     def click_update_clash_subscription(self):
         if self.http_get_clash:
             print('clash subscriptions are currently being updated')
@@ -1061,7 +1099,10 @@ class UIMain:
 
         print(f'start update clash subscription: {url}')
         print(f'start update clash subscription, use http proxy: {self.proc_http_port}')
-        self.http_get_clash = ChildProcHttpGet(url, self.proc_http_port)
+        headers = None
+        if len(self.editor_clash_ua.get()) > 0:
+            headers = {'User-Agent': self.editor_clash_ua.get()}
+        self.http_get_clash = ChildProcHttpGet(url, self.proc_http_port, headers)
         self.http_get_clash.start()
         self.root.after(100, func=self.check_update_clash_subscription)
 
@@ -1074,10 +1115,14 @@ class UIMain:
         if self.http_get_clash:
             print(f'update clash subscription returns: {len(self.http_get_clash.ret)}')
             print(f'update clash subscription cache: {len(self.svr_cache_clash)}')
+            fetch_failed = (len(self.http_get_clash.ret) <= 0)
             self.svr_ret_clash = self.http_get_clash.ret if len(self.http_get_clash.ret) > 0 \
                 else base64.b64decode(self.svr_cache_clash)
             self.http_get_clash = None
-            self.click_show_clash_subscription()
+            if not fetch_failed:
+                self.click_show_clash_subscription()
+            else:
+                ModalInfo(self.root, 'update clash subscription', 'fetch failed')
 
     def click_show_clash_subscription(self):
         ClashShowInfo(self.root, self.svr_ret_clash.decode('UTF-8'))
@@ -1158,7 +1203,7 @@ class UIMain:
                    it.get('network', ''),
                    it.get('security', ''),
                    it.get('servername', ''))
-            self.table.insert(parent='', index='end', iid=cur_iid,
+            self.table.insert(parent='', index='end', iid=str(cur_iid),
                               text=(check if cur_iid == self.cur_svr else uncheck), values=val)
             cur_iid += 1
 
@@ -1454,6 +1499,7 @@ class UIMain:
                 'lan_connect': self.clash_config_obj.lan_connect,
                 'user_clash_url': self.editor_clash_url.get(),
                 'user_clash_path': self.editor_clash_path.get(),
+                'clash_ua': self.editor_clash_ua.get(),
                 'clash_port': self.clash_config_obj.clash_port,
                 'user_clash_exclude': self.editor_clash_exclude.get(),
                 'svr_cache_clash': self.svr_cache_clash.decode('UTF-8')}
