@@ -961,7 +961,7 @@ class UIMain:
         if self.http_get:
             print(f'update subscription returns: {self.http_get.ret}')
             print(f'update subscription cache: {self.svr_cache}')
-            fetch_failed = len(self.http_get.ret)
+            fetch_failed = (len(self.http_get.ret) <= 0)
             self.svr_ret = self.http_get.ret if len(self.http_get.ret) > 0 else self.svr_cache
             self.svr_lst = parse_svrs(self.svr_ret)
             if self.cur_svr != -1:
