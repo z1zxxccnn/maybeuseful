@@ -978,6 +978,9 @@ class UIMain:
             print(f'update subscription returns: {self.http_get.ret}')
             print(f'update subscription cache: {self.svr_cache}')
             fetch_failed = (len(self.http_get.ret) <= 0)
+            has_change = True
+            if not fetch_failed:
+                has_change = (self.http_get.ret != self.svr_cache)
             self.svr_ret = self.http_get.ret if len(self.http_get.ret) > 0 else self.svr_cache
             self.svr_lst = parse_svrs(self.svr_ret)
             if self.cur_svr != -1:
@@ -987,6 +990,8 @@ class UIMain:
             self.http_get = None
             if fetch_failed:
                 ModalInfo(self.root, 'update subscription', 'fetch failed')
+            elif not has_change:
+                ModalInfo(self.root, 'update subscription', 'no change')
 
     def click_update_geography(self, force=False):
         if self.http_get_geoip or self.http_get_geoipcp or self.http_get_geosite:
@@ -1133,11 +1138,17 @@ class UIMain:
             print(f'update clash subscription returns: {len(self.http_get_clash.ret)}')
             print(f'update clash subscription cache: {len(self.svr_cache_clash)}')
             fetch_failed = (len(self.http_get_clash.ret) <= 0)
+            has_change = False
+            if not fetch_failed:
+                has_change = (self.http_get_clash.ret != base64.b64decode(self.svr_cache_clash))
             self.svr_ret_clash = self.http_get_clash.ret if len(self.http_get_clash.ret) > 0 \
                 else base64.b64decode(self.svr_cache_clash)
             self.http_get_clash = None
             if not fetch_failed:
-                self.click_show_clash_subscription()
+                if has_change:
+                    self.click_show_clash_subscription()
+                else:
+                    ModalInfo(self.root, 'update clash subscription', 'no change')
             else:
                 ModalInfo(self.root, 'update clash subscription', 'fetch failed')
 
