@@ -46,6 +46,21 @@ class ModalInfo(tk.Toplevel):
         self.grab_set()
 
 
+class ModalInfo2(tk.Toplevel):
+    def __init__(self, root, title, message, continue_cb, *args):
+        tk.Toplevel.__init__(self, root, *args)
+        self.continue_cb = continue_cb
+        self.title(title)
+        tk.Label(self, text=message).pack(side='top', padx=30, pady=30)
+        tk.Button(self, text='Close', command=self.destroy).pack(side='bottom', padx=10, pady=10)
+        tk.Button(self, text='Continue', command=self.click_continue).pack(side='bottom', padx=10, pady=10)
+        self.grab_set()
+
+    def click_continue(self):
+        self.destroy()
+        self.continue_cb()
+
+
 class ChildProcHttpGet(threading.Thread):
 
     def __init__(self, url, http_port=None, headers=None):
@@ -622,6 +637,7 @@ class UIMain:
         ad_allow = False
         user_clash_url = ''
         user_clash_path = ''
+        clash_ua = ''
         clash_port = str(g_default_clash_port)
         user_clash_exclude = ''
 
@@ -972,13 +988,14 @@ class UIMain:
             if fetch_failed:
                 ModalInfo(self.root, 'update subscription', 'fetch failed')
 
-    def click_update_geography(self):
+    def click_update_geography(self, force=False):
         if self.http_get_geoip or self.http_get_geoipcp or self.http_get_geosite:
             print('geography are currently being updated')
             return
 
-        if not ((self.process is not None) and (not self.proc_dis_proxy)):
-            ModalInfo(self.root, 'update geography', 'proxy is not running')
+        if not force and not ((self.process is not None) and (not self.proc_dis_proxy)):
+            ModalInfo2(self.root, 'update geography', 'proxy is not running',
+                       lambda: self.click_update_geography(True))
             return
 
         print(f'start update geography, use http proxy: {self.proc_http_port}')
@@ -1127,13 +1144,14 @@ class UIMain:
     def click_show_clash_subscription(self):
         ClashShowInfo(self.root, self.svr_ret_clash.decode('UTF-8'))
 
-    def click_clash_mmdb(self):
+    def click_clash_mmdb(self, force=False):
         if self.http_get_mmdb:
             print('mmdb are currently being updated')
             return
 
-        if not ((self.process is not None) and (not self.proc_dis_proxy)):
-            ModalInfo(self.root, 'update mmdb', 'proxy is not running')
+        if not force and not ((self.process is not None) and (not self.proc_dis_proxy)):
+            ModalInfo2(self.root, 'update mmdb', 'proxy is not running',
+                       lambda: self.click_clash_mmdb(True))
             return
 
         print(f'start update mmdb, use http proxy: {self.proc_http_port}')
