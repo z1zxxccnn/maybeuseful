@@ -629,6 +629,7 @@ class UIMain:
         user_dns = ''
         user_url = ''
         user_path = ''
+        cmd_params = ''
         socks_port = str(g_default_socks_port)
         http_port = str(g_default_http_port)
         user_exclude = ''
@@ -650,6 +651,7 @@ class UIMain:
             user_dns = data.get('user_dns', '')
             user_url = data.get('user_url', '')
             user_path = data.get('user_path', '')
+            cmd_params = str(data.get('cmd_params', ''))
             socks_port = str(data.get('socks_port', g_default_socks_port))
             http_port = str(data.get('http_port', g_default_http_port))
             user_exclude = data.get('user_exclude', '')
@@ -745,6 +747,14 @@ class UIMain:
         self.label_socks_port = tk.Label(self.frame2, text='socks-port:')
         self.label_socks_port.pack(side='right', padx=(5, 0), pady=2)
 
+        self.editor_cmd_params = tk.Entry(self.frame2, width=8)
+        self.editor_cmd_params.pack(side='right', padx=(0, 5), pady=2)
+        if len(cmd_params) > 0:
+            self.editor_cmd_params.insert(0, cmd_params)
+
+        self.label_cmd_params = tk.Label(self.frame2, text='params:')
+        self.label_cmd_params.pack(side='right', padx=(5, 0), pady=2)
+
         self.frame3 = tk.Frame(self.frame)
         self.frame3.pack(fill='x', side='top')
 
@@ -833,8 +843,8 @@ class UIMain:
         if len(clash_ua) > 0:
             self.editor_clash_ua.insert(0, clash_ua)
 
-        self.label_clash_port = tk.Label(self.frame6, text='clash-ua:')
-        self.label_clash_port.pack(side='right', padx=(5, 0), pady=2)
+        self.label_clash_ua = tk.Label(self.frame6, text='clash-ua:')
+        self.label_clash_ua.pack(side='right', padx=(5, 0), pady=2)
 
         self.frame7 = tk.Frame(self.frame)
         self.frame7.pack(fill='x', side='top')
@@ -908,7 +918,7 @@ class UIMain:
         self.table.column('#0', anchor=tk.CENTER, width=40, stretch=False)
         self.table.column('NAME', anchor=tk.CENTER, width=60, stretch=False)
         self.table.column('TYPE', anchor=tk.CENTER, width=60, stretch=False)
-        self.table.column('ADDR', anchor=tk.CENTER, width=60, stretch=False)
+        self.table.column('ADDR', anchor=tk.CENTER, width=120, stretch=False)
         self.table.column('PORT', anchor=tk.CENTER, width=60, stretch=False)
         self.table.column('CIPHER', anchor=tk.CENTER, width=80, stretch=False)
         self.table.column('NETWORK', anchor=tk.CENTER, width=80, stretch=False)
@@ -1283,6 +1293,13 @@ class UIMain:
         if self.out_q is None or self.err_q is None:
             return
 
+        ended = False
+        if not self.out_t.is_alive() and not self.err_t.is_alive():
+            exit_code = self.process.poll()
+            if exit_code is not None:
+                ended = True
+                print(f'sub proc ended, exit_code: {exit_code}')
+
         a = datetime.datetime.now()
         while not self.out_q.empty():
             line = self.out_q.get()
@@ -1290,7 +1307,7 @@ class UIMain:
             if self.text_stdout_vs.get()[1] == 1.0:
                 self.text_stdout.yview_pickplace('end')
             b = datetime.datetime.now() - a
-            if b.microseconds > 200:
+            if not ended and b.microseconds > 200:
                 break
 
         a = datetime.datetime.now()
@@ -1300,7 +1317,7 @@ class UIMain:
             if self.text_stderr_vs.get()[1] == 1.0:
                 self.text_stderr.yview_pickplace('end')
             b = datetime.datetime.now() - a
-            if b.microseconds > 200:
+            if not ended and b.microseconds > 200:
                 break
 
         max_line = 2000
@@ -1317,7 +1334,16 @@ class UIMain:
             if self.text_stderr_vs.get()[1] == 1.0:
                 self.text_stderr.yview_pickplace('end')
 
-        self.root.after(1000, self.subproc_data)
+        if not ended:
+            self.root.after(1000, self.subproc_data)
+        else:
+            self.stop_subproc()
+
+            self.cur_svr = -1
+            self.update_svr_lst_to_ui()
+
+            self.btn_clash_start.pack(side='right', padx=5, pady=2)
+            self.btn_clash_stop.pack_forget()
 
     def start_v2ray(self, disable=False):
         print(f'start v2ray, disable: {disable}')
@@ -1364,6 +1390,8 @@ class UIMain:
 
         exe_path = os.path.join(path, 'wv2ray.exe')
         if not os.path.exists(exe_path):
+            exe_path = os.path.join(path, 'v2ray.exe')
+        if not os.path.exists(exe_path):
             exe_path = os.path.join(path, 'v2ray')
         if not os.path.exists(exe_path):
             ModalInfo(self.root, 'start v2ray', 'v2ray can not found')
@@ -1383,9 +1411,14 @@ class UIMain:
         f.write(cur_json.encode('UTF-8'))
         f.close()
 
+        up_lst = [exe_path, ]
+        cmd_params = self.editor_cmd_params.get()
+        if len(cmd_params) > 0:
+            up_lst = [exe_path, cmd_params]
+
         self.proc_dis_proxy = disable
         self.proc_http_port = self.config_obj.http_port
-        self.process = subprocess.Popen([exe_path, ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.process = subprocess.Popen(up_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.out_q = queue.Queue()
         self.err_q = queue.Queue()
 
@@ -1409,6 +1442,7 @@ class UIMain:
         data = {'user_dns': self.editor_dns.get(),
                 'user_url': self.editor_url.get(),
                 'user_path': self.editor_path.get(),
+                'cmd_params': self.editor_cmd_params.get(),
                 'socks_port': self.config_obj.socks_port,
                 'http_port': self.config_obj.http_port,
                 'user_exclude': self.editor_exclude.get(),
