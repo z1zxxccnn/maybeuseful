@@ -992,16 +992,19 @@ class UIMain:
             if not fetch_failed:
                 has_change = (self.http_get.ret != self.svr_cache)
             self.svr_ret = self.http_get.ret if len(self.http_get.ret) > 0 else self.svr_cache
-            self.svr_lst = parse_svrs(self.svr_ret)
-            if self.cur_svr != -1:
-                self.cur_svr = -1
-                self.start_v2ray(True)
-            self.update_svr_lst_to_ui()
             self.http_get = None
-            if fetch_failed:
+            if not fetch_failed:
+                if has_change:
+                    self.svr_cache = self.svr_ret
+                    self.svr_lst = parse_svrs(self.svr_ret)
+                    if self.cur_svr != -1:
+                        self.cur_svr = -1
+                        self.start_v2ray(True)
+                    self.update_svr_lst_to_ui()
+                else:
+                    ModalInfo(self.root, 'update subscription', 'no change')
+            else:
                 ModalInfo(self.root, 'update subscription', 'fetch failed')
-            elif not has_change:
-                ModalInfo(self.root, 'update subscription', 'no change')
 
     def click_update_geography(self, force=False):
         if self.http_get_geoip or self.http_get_geoipcp or self.http_get_geosite:
@@ -1146,7 +1149,7 @@ class UIMain:
 
         if self.http_get_clash:
             print(f'update clash subscription returns: {len(self.http_get_clash.ret)}')
-            print(f'update clash subscription cache: {len(self.svr_cache_clash)}')
+            print(f'update clash subscription cache: {len(base64.b64decode(self.svr_cache_clash))}')
             fetch_failed = (len(self.http_get_clash.ret) <= 0)
             has_change = False
             if not fetch_failed:
@@ -1156,6 +1159,7 @@ class UIMain:
             self.http_get_clash = None
             if not fetch_failed:
                 if has_change:
+                    self.svr_cache_clash = base64.b64encode(self.svr_ret_clash)
                     self.click_show_clash_subscription()
                 else:
                     ModalInfo(self.root, 'update clash subscription', 'no change')
