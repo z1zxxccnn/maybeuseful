@@ -596,6 +596,22 @@ class SubProcReader(threading.Thread):
             print(e)
 
 
+def update_user_file(data):
+    ori_data = {}
+    user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
+    if os.path.exists(user_file):
+        f_user = open(user_file, 'rb')
+        ori = f_user.read().decode('UTF-8')
+        f_user.close()
+        ori_data = json.loads(ori)
+
+    ori_data.update(data)
+    out = json.dumps(ori_data, indent=2)
+    f_user = open(user_file, 'wb')
+    f_user.write(out.encode('UTF-8'))
+    f_user.close()
+
+
 class UIMain:
 
     def __init__(self):
@@ -996,6 +1012,7 @@ class UIMain:
             if not fetch_failed:
                 if has_change:
                     self.svr_cache = self.svr_ret
+                    update_user_file({'svr_cache': self.svr_cache.decode('UTF-8')})
                     self.svr_lst = parse_svrs(self.svr_ret)
                     if self.cur_svr != -1:
                         self.cur_svr = -1
@@ -1160,6 +1177,7 @@ class UIMain:
             if not fetch_failed:
                 if has_change:
                     self.svr_cache_clash = base64.b64encode(self.svr_ret_clash)
+                    update_user_file({'svr_cache_clash': self.svr_cache_clash.decode('UTF-8')})
                     self.click_show_clash_subscription()
                 else:
                     ModalInfo(self.root, 'update clash subscription', 'no change')
@@ -1434,14 +1452,6 @@ class UIMain:
 
         self.subproc_data()
 
-        ori_data = {}
-        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
-        if os.path.exists(user_file):
-            f_user = open(user_file, 'rb')
-            data = f_user.read().decode('UTF-8')
-            f_user.close()
-            ori_data = json.loads(data)
-
         self.svr_cache = self.svr_ret
         data = {'user_dns': self.editor_dns.get(),
                 'user_url': self.editor_url.get(),
@@ -1454,12 +1464,7 @@ class UIMain:
                 'lan_connect': self.config_obj.lan_connect,
                 'ad_allow': self.config_obj.ad_allow,
                 'svr_cache': self.svr_cache.decode('UTF-8')}
-        ori_data.update(data)
-        data = json.dumps(ori_data, indent=2)
-        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
-        f_user = open(user_file, 'wb')
-        f_user.write(data.encode('UTF-8'))
-        f_user.close()
+        update_user_file(data)
 
     def start_clash(self):
         print('start clash')
@@ -1550,14 +1555,6 @@ class UIMain:
 
         self.subproc_data()
 
-        ori_data = {}
-        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
-        if os.path.exists(user_file):
-            f_user = open(user_file, 'rb')
-            data = f_user.read().decode('UTF-8')
-            f_user.close()
-            ori_data = json.loads(data)
-
         self.svr_cache_clash = base64.b64encode(self.svr_ret_clash)
         data = {'user_dns': self.editor_dns.get(),
                 'socks_port': self.clash_config_obj.socks_port,
@@ -1570,12 +1567,7 @@ class UIMain:
                 'clash_port': self.clash_config_obj.clash_port,
                 'user_clash_exclude': self.editor_clash_exclude.get(),
                 'svr_cache_clash': self.svr_cache_clash.decode('UTF-8')}
-        ori_data.update(data)
-        data = json.dumps(ori_data, indent=2)
-        user_file = os.path.join(os.path.expanduser('~'), 'maybeuseful.json')
-        f_user = open(user_file, 'wb')
-        f_user.write(data.encode('UTF-8'))
-        f_user.close()
+        update_user_file(data)
 
     def stop_subproc(self):
         print('stop sub proc')
