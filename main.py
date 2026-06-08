@@ -1035,15 +1035,17 @@ class UIMain:
 
         print(f'start update geography, use http proxy: {self.proc_http_port}')
 
-        path = os.path.join(self.editor_path.get(), 'geoip.dat')
+        cur_dir = os.path.dirname(self.editor_path.get())
+
+        path = os.path.join(cur_dir, 'geoip.dat')
         url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip.dat'
         self.http_get_geoip = GeoInfoUnit(path, url, self.proc_http_port)
 
-        path = os.path.join(self.editor_path.get(), 'geoip-only-cn-private.dat')
+        path = os.path.join(cur_dir, 'geoip-only-cn-private.dat')
         url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip-only-cn-private.dat'
         self.http_get_geoipcp = GeoInfoUnit(path, url, self.proc_http_port)
 
-        path = os.path.join(self.editor_path.get(), 'geosite.dat')
+        path = os.path.join(cur_dir, 'geosite.dat')
         url = 'https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat'
         self.http_get_geosite = GeoInfoUnit(path, url, self.proc_http_port)
 
@@ -1372,10 +1374,16 @@ class UIMain:
 
         self.stop_subproc()
 
-        path = self.editor_path.get()
-        if len(path) <= 0:
+        exe_path = self.editor_path.get()
+        if len(exe_path) <= 0:
             ModalInfo(self.root, 'start v2ray', 'path is empty')
             return
+
+        if not os.path.exists(exe_path):
+            ModalInfo(self.root, 'start v2ray', 'v2ray can not found')
+            return
+
+        path = os.path.dirname(exe_path)
 
         socks_port = self.editor_socks_port.get()
         if socks_port.isdigit():
@@ -1410,15 +1418,6 @@ class UIMain:
               f'lan_connect: {self.config_obj.lan_connect}, '
               f'ad_allow: {self.config_obj.ad_allow}')
 
-        exe_path = os.path.join(path, 'wv2ray.exe')
-        if not os.path.exists(exe_path):
-            exe_path = os.path.join(path, 'v2ray.exe')
-        if not os.path.exists(exe_path):
-            exe_path = os.path.join(path, 'v2ray')
-        if not os.path.exists(exe_path):
-            ModalInfo(self.root, 'start v2ray', 'v2ray can not found')
-            return
-
         if not disable:
             if self.cur_svr < 0 or self.cur_svr >= len(self.svr_lst):
                 ModalInfo(self.root, 'start v2ray', 'server index incorrect')
@@ -1440,7 +1439,13 @@ class UIMain:
 
         self.proc_dis_proxy = disable
         self.proc_http_port = self.config_obj.http_port
-        self.process = subprocess.Popen(up_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.process = subprocess.Popen(up_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception as e:
+            print(f'v2ray subprocess exception: {e}')
+            self.stop_subproc()
+            return
+
         self.out_q = queue.Queue()
         self.err_q = queue.Queue()
 
@@ -1542,8 +1547,14 @@ class UIMain:
 
         self.proc_dis_proxy = False
         self.proc_http_port = self.clash_config_obj.http_port
-        self.process = subprocess.Popen([exe_path, '-d', '.'], cwd=path,
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            self.process = subprocess.Popen([exe_path, '-d', '.'], cwd=path,
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception as e:
+            print(f'clash subprocess exception: {e}')
+            self.stop_subproc()
+            return
+
         self.out_q = queue.Queue()
         self.err_q = queue.Queue()
 
