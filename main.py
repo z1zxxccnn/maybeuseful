@@ -1201,7 +1201,9 @@ class UIMain:
 
         print(f'start update mmdb, use http proxy: {self.proc_http_port}')
 
-        path = os.path.join(self.editor_clash_path.get(), 'Country.mmdb')
+        cur_dir = os.path.dirname(self.editor_clash_path.get())
+
+        path = os.path.join(cur_dir, 'Country.mmdb')
         url = 'https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb'
         self.http_get_mmdb = GeoInfoUnit(path, url, self.proc_http_port)
 
@@ -1476,10 +1478,16 @@ class UIMain:
 
         self.stop_subproc()
 
-        path = self.editor_clash_path.get()
-        if len(path) <= 0:
+        exe_path = self.editor_clash_path.get()
+        if len(exe_path) <= 0:
             ModalInfo(self.root, 'start clash', 'path is empty')
             return
+
+        if not os.path.exists(exe_path):
+            ModalInfo(self.root, 'start clash', 'clash can not found')
+            return
+
+        path = os.path.dirname(exe_path)
 
         socks_port = self.editor_socks_port.get()
         if socks_port.isdigit():
@@ -1530,13 +1538,6 @@ class UIMain:
         mmdb_path = os.path.join(path, 'Country.mmdb')
         if not os.path.exists(mmdb_path):
             ModalInfo(self.root, 'start clash', 'mmdb can not found')
-            return
-
-        exe_path = os.path.join(path, 'mihomo.exe')
-        if not os.path.exists(exe_path):
-            exe_path = os.path.join(path, 'mihomo')
-        if not os.path.exists(exe_path):
-            ModalInfo(self.root, 'start clash', 'clash can not found')
             return
 
         config_path = os.path.join(path, 'config.yaml')
