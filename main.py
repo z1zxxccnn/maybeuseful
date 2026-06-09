@@ -612,6 +612,19 @@ def update_user_file(data):
     f_user.close()
 
 
+def change_btn_text(btn, running):
+    if running:
+        cur_text = btn.cget('text')
+        cur_text_lst = cur_text.split('|')
+        cur_text_len = len(''.join(cur_text_lst))
+        next_pos = (len(cur_text_lst[0]) % cur_text_len) + 1
+        next_text = ''.join(cur_text_lst)[:next_pos] + '|' + ''.join(cur_text_lst)[next_pos:]
+        btn.config(text=next_text)
+    else:
+        cur_text = btn.cget('text')
+        btn.config(text=''.join(cur_text.split('|')))
+
+
 class UIMain:
 
     def __init__(self):
@@ -997,9 +1010,10 @@ class UIMain:
     def check_update_subscription(self):
         if self.http_get and self.http_get.is_alive():
             self.root.after(100, func=self.check_update_subscription)
-            print('subscription wait...')
+            change_btn_text(self.btn_update_sub, True)
             return
 
+        change_btn_text(self.btn_update_sub, False)
         if self.http_get:
             print(f'update subscription returns: {self.http_get.ret}')
             print(f'update subscription cache: {self.svr_cache}')
@@ -1059,9 +1073,10 @@ class UIMain:
                 self.http_get_geoipcp and self.http_get_geoipcp.is_alive()) or (
                 self.http_get_geosite and self.http_get_geosite.is_alive()):
             self.root.after(100, func=self.check_update_geography)
-            print('geography wait...')
+            change_btn_text(self.btn_update_geo, True)
             return
 
+        change_btn_text(self.btn_update_geo, False)
         need_rewrite = False
         if self.http_get_geoip and self.http_get_geoip.need_rewrite:
             need_rewrite = True
@@ -1163,9 +1178,10 @@ class UIMain:
     def check_update_clash_subscription(self):
         if self.http_get_clash and self.http_get_clash.is_alive():
             self.root.after(100, func=self.check_update_clash_subscription)
-            print('clash subscription wait...')
+            change_btn_text(self.btn_clash_update_sub, True)
             return
 
+        change_btn_text(self.btn_clash_update_sub, False)
         if self.http_get_clash:
             print(f'update clash subscription returns: {len(self.http_get_clash.ret)}')
             print(f'update clash subscription cache: {len(base64.b64decode(self.svr_cache_clash))}')
@@ -1213,9 +1229,10 @@ class UIMain:
     def check_update_mmdb(self):
         if self.http_get_mmdb and self.http_get_mmdb.is_alive():
             self.root.after(100, func=self.check_update_mmdb)
-            print('mmdb wait...')
+            change_btn_text(self.btn_clash_mmdb, True)
             return
 
+        change_btn_text(self.btn_clash_mmdb, False)
         need_rewrite = False
         if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
             need_rewrite = True
