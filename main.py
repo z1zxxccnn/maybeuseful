@@ -1049,7 +1049,14 @@ class UIMain:
 
         print(f'start update geography, use http proxy: {self.proc_http_port}')
 
-        cur_dir = os.path.dirname(self.editor_path.get())
+        cur_exe = self.editor_path.get()
+        if not os.path.isfile(cur_exe):
+            ModalInfo(self.root, 'update geography', 'not valid file')
+            return
+        cur_dir = os.path.dirname(cur_exe)
+        if not os.path.isdir(cur_dir):
+            ModalInfo(self.root, 'update geography', 'not valid directory')
+            return
 
         path = os.path.join(cur_dir, 'geoip.dat')
         url = 'https://github.com/v2fly/geoip/releases/latest/download/geoip.dat'
@@ -1088,35 +1095,39 @@ class UIMain:
         if need_rewrite:
             print('update geography rewrite')
 
-            if self.http_get_geoip and self.http_get_geoip.need_rewrite:
-                old_path = self.http_get_geoip.path + '.old'
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                if os.path.exists(self.http_get_geoip.path):
-                    os.rename(self.http_get_geoip.path, old_path)
-                f = open(self.http_get_geoip.path, 'wb')
-                f.write(self.http_get_geoip.ret)
-                f.close()
+            try:
+                if self.http_get_geoip and self.http_get_geoip.need_rewrite:
+                    old_path = self.http_get_geoip.path + '.old'
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    if os.path.exists(self.http_get_geoip.path):
+                        os.rename(self.http_get_geoip.path, old_path)
+                    f = open(self.http_get_geoip.path, 'wb')
+                    f.write(self.http_get_geoip.ret)
+                    f.close()
 
-            if self.http_get_geoipcp and self.http_get_geoipcp.need_rewrite:
-                old_path = self.http_get_geoipcp.path + '.old'
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                if os.path.exists(self.http_get_geoipcp.path):
-                    os.rename(self.http_get_geoipcp.path, old_path)
-                f = open(self.http_get_geoipcp.path, 'wb')
-                f.write(self.http_get_geoipcp.ret)
-                f.close()
+                if self.http_get_geoipcp and self.http_get_geoipcp.need_rewrite:
+                    old_path = self.http_get_geoipcp.path + '.old'
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    if os.path.exists(self.http_get_geoipcp.path):
+                        os.rename(self.http_get_geoipcp.path, old_path)
+                    f = open(self.http_get_geoipcp.path, 'wb')
+                    f.write(self.http_get_geoipcp.ret)
+                    f.close()
 
-            if self.http_get_geosite and self.http_get_geosite.need_rewrite:
-                old_path = self.http_get_geosite.path + '.old'
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                if os.path.exists(self.http_get_geosite.path):
-                    os.rename(self.http_get_geosite.path, old_path)
-                f = open(self.http_get_geosite.path, 'wb')
-                f.write(self.http_get_geosite.ret)
-                f.close()
+                if self.http_get_geosite and self.http_get_geosite.need_rewrite:
+                    old_path = self.http_get_geosite.path + '.old'
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    if os.path.exists(self.http_get_geosite.path):
+                        os.rename(self.http_get_geosite.path, old_path)
+                    f = open(self.http_get_geosite.path, 'wb')
+                    f.write(self.http_get_geosite.ret)
+                    f.close()
+            except Exception as e:
+                print(f'update geography exception: {e}')
+                return
 
         self.http_get_geoip = None
         self.http_get_geoipcp = None
@@ -1217,7 +1228,14 @@ class UIMain:
 
         print(f'start update mmdb, use http proxy: {self.proc_http_port}')
 
-        cur_dir = os.path.dirname(self.editor_clash_path.get())
+        cur_exe = self.editor_clash_path.get()
+        if not os.path.isfile(cur_exe):
+            ModalInfo(self.root, 'update mmdb', 'not valid file')
+            return
+        cur_dir = os.path.dirname(cur_exe)
+        if not os.path.isdir(cur_dir):
+            ModalInfo(self.root, 'update mmdb', 'not valid directory')
+            return
 
         path = os.path.join(cur_dir, 'Country.mmdb')
         url = 'https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb'
@@ -1240,15 +1258,19 @@ class UIMain:
         if need_rewrite:
             print('update mmdb rewrite')
 
-            if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
-                old_path = self.http_get_mmdb.path + '.old'
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                if os.path.exists(self.http_get_mmdb.path):
-                    os.rename(self.http_get_mmdb.path, old_path)
-                f = open(self.http_get_mmdb.path, 'wb')
-                f.write(self.http_get_mmdb.ret)
-                f.close()
+            try:
+                if self.http_get_mmdb and self.http_get_mmdb.need_rewrite:
+                    old_path = self.http_get_mmdb.path + '.old'
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    if os.path.exists(self.http_get_mmdb.path):
+                        os.rename(self.http_get_mmdb.path, old_path)
+                    f = open(self.http_get_mmdb.path, 'wb')
+                    f.write(self.http_get_mmdb.ret)
+                    f.close()
+            except Exception as e:
+                print(f'update mmdb exception: {e}')
+                return
 
         self.http_get_mmdb = None
 
@@ -1398,7 +1420,7 @@ class UIMain:
             ModalInfo(self.root, 'start v2ray', 'path is empty')
             return
 
-        if not os.path.exists(exe_path):
+        if not os.path.isfile(exe_path):
             ModalInfo(self.root, 'start v2ray', 'v2ray can not found')
             return
 
@@ -1447,9 +1469,14 @@ class UIMain:
             cur_json = self.config_obj.gen_json(self.svr_lst[self.cur_svr])
         else:
             cur_json = self.config_obj.gen_json_disable()
-        f = open(config_path, 'wb')
-        f.write(cur_json.encode('UTF-8'))
-        f.close()
+        try:
+            f = open(config_path, 'wb')
+            f.write(cur_json.encode('UTF-8'))
+            f.close()
+        except Exception as e:
+            print(f'v2ray write config exception: {e}')
+            self.stop_subproc()
+            return
 
         up_lst = [exe_path, ]
         cmd_params = self.editor_cmd_params.get()
@@ -1459,7 +1486,7 @@ class UIMain:
         self.proc_dis_proxy = disable
         self.proc_http_port = self.config_obj.http_port
         try:
-            self.process = subprocess.Popen(up_lst, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.process = subprocess.Popen(up_lst, cwd=path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except Exception as e:
             print(f'v2ray subprocess exception: {e}')
             self.stop_subproc()
@@ -1500,7 +1527,7 @@ class UIMain:
             ModalInfo(self.root, 'start clash', 'path is empty')
             return
 
-        if not os.path.exists(exe_path):
+        if not os.path.isfile(exe_path):
             ModalInfo(self.root, 'start clash', 'clash can not found')
             return
 
@@ -1559,9 +1586,14 @@ class UIMain:
 
         config_path = os.path.join(path, 'config.yaml')
         cur_yaml = self.clash_config_obj.modify_yaml(self.svr_ret_clash)
-        f = open(config_path, 'wb')
-        f.write(cur_yaml)
-        f.close()
+        try:
+            f = open(config_path, 'wb')
+            f.write(cur_yaml)
+            f.close()
+        except Exception as e:
+            print(f'clash write config exception: {e}')
+            self.stop_subproc()
+            return
 
         self.proc_dis_proxy = False
         self.proc_http_port = self.clash_config_obj.http_port
