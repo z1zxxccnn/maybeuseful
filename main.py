@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
 import urllib.request
+import urllib.parse
 import socket
 import base64
 import json
@@ -355,38 +356,60 @@ def parse_svrs(data):
 
     svr_lst = []
 
-    for it in data_lst:
-        if it.startswith(b'ss://'):
-            info, name = it[len(b'ss://'):].split(b'#')
-            info = base64.b64decode(info + b'=' * (-len(info) % 4))
-            info = info.decode('UTF-8')
-            print(f'ss info: {info}')
-            svr = {'type': 'ss', 'name': name.decode('UTF-8')}
-            check, domain = info.split('@')
-            svr['addr'], svr['port'] = domain.split(':')
-            svr['cipher'], svr['password'] = check.split(':')
-            print(f'ss svr: {svr}')
-            svr_lst.append(svr)
+    try:
+        for it in data_lst:
+            if it.startswith(b'ss://'):
+                info, name = it[len(b'ss://'):].split(b'#')
+                info = base64.b64decode(info + b'=' * (-len(info) % 4))
+                info = info.decode('UTF-8')
+                print(f'ss info: {info}')
+                svr = {'type': 'ss', 'name': name.decode('UTF-8')}
+                check, domain = info.split('@')
+                svr['addr'], svr['port'] = domain.split(':')
+                svr['cipher'], svr['password'] = check.split(':')
+                print(f'ss svr: {svr}')
+                svr_lst.append(svr)
 
-        elif it.startswith(b'vmess://'):
-            info = it[len(b'vmess://'):]
-            info = base64.b64decode(info + b'=' * (-len(info) % 4))
-            info = info.decode('UTF-8')
-            print(f'vmess info: {info}')
-            svr = {'type': 'vmess'}
-            d = json.loads(info)
-            svr['name'] = d['ps']
-            svr['addr'] = d['add']
-            svr['port'] = d['port']
-            svr['id'] = d['id']
-            svr['aid'] = d['aid']
-            svr['network'] = d['net']
-            if 'tls' in d and d['tls'] == 'tls':
-                svr['security'] = d['tls']
-                if 'sni' in d:
-                    svr['servername'] = d['sni']
-            print(f'vmess svr: {svr}')
-            svr_lst.append(svr)
+            elif it.startswith(b'vmess://'):
+                info = it[len(b'vmess://'):]
+                info = base64.b64decode(info + b'=' * (-len(info) % 4))
+                info = info.decode('UTF-8')
+                print(f'vmess info: {info}')
+                svr = {'type': 'vmess'}
+                d = json.loads(info)
+                svr['name'] = d['ps']
+                svr['addr'] = d['add']
+                svr['port'] = d['port']
+                svr['id'] = d['id']
+                svr['aid'] = d['aid']
+                svr['network'] = d['net']
+                if 'tls' in d and d['tls'] == 'tls':
+                    svr['security'] = d['tls']
+                    if 'sni' in d:
+                        svr['servername'] = d['sni']
+                print(f'vmess svr: {svr}')
+                svr_lst.append(svr)
+
+            elif it.startswith(b'vless://'):
+                info, name = it[len(b'vless://'):].decode('UTF-8').split('#')
+                print(f'vless info: {info}')
+                svr = {'type': 'vless', 'name': urllib.parse.unquote(name)}
+                domain, params = info.split('?')
+                svr['id'], host = domain.split('@')
+                svr['addr'], svr['port'] = host.split(':')
+                for kv in params.split('&'):
+                    k, v = kv.split('=')
+                    if k == 'sni':
+                        svr['servername'] = v
+                    elif k == 'type':
+                        svr['network'] = v
+                    else:
+                        svr[k] = v
+                print(f'vless svr: {svr}')
+                svr_lst.append(svr)
+
+    except Exception as e:
+        print(f'v2ray parse svr exception: {e}')
 
     return svr_lst
 
@@ -447,6 +470,18 @@ class ConfigObj:
                 outbound0['streamSettings']['security'] = svr['security']
                 outbound0['streamSettings']['tlsSettings'] = \
                     {'allowInsecure': True, 'serverName': svr['servername'], 'fingerprint': ''}
+        elif svr['type'] == 'vless':
+            outbound0['protocol'] = 'vless'
+            vnext0 = {'address': svr['addr'], 'port': int(svr['port']),
+                      'users': [{'id': svr['id'], 'flow': svr['flow'], 'encryption': svr['encryption']}, ]}
+            outbound0['settings'] = {'vnext': [vnext0, ]}
+            outbound0['streamSettings'] = {'network': svr['network']}
+            outbound0['mux'] = {'enabled': False, 'concurrency': -1}
+            if 'security' in svr and svr['security'] == 'reality':
+                outbound0['streamSettings']['security'] = svr['security']
+                outbound0['streamSettings']['realitySettings'] = \
+                    {'serverName': svr['servername'], 'fingerprint': svr['fp'], 'publicKey': svr['pbk'],
+                     'shortId': svr['sid'], 'spiderX': ''}
         else:
             return None
 
